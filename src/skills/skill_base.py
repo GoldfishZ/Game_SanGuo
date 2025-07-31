@@ -10,9 +10,9 @@ from enum import Enum
 
 class SkillType(Enum):
     """技能类型"""
-    ACTIVE = "主动技能"      # 需要手动释放
-    PASSIVE = "被动技能"     # 自动触发
-    COMBO = "组合技能"       # 多人配合技能
+    ENHANCE_WEAKEN = "强化/虚弱技能"  # 强化自身或虚弱对方
+    DAMAGE = "伤害技能"              # 对敌方造成伤害
+    PASSIVE = "被动技能"             # 武将属性技能
 
 
 class TargetType(Enum):
@@ -23,8 +23,12 @@ class TargetType(Enum):
     SINGLE_ALLY = "单体友军"
     ALL_ALLIES = "全体友军"
     RANDOM_ENEMY = "随机敌人"
-    FRONT_ROW = "前排"
-    BACK_ROW = "后排"
+    FRONT_ROW_ENEMY = "敌方前排"
+    BACK_ROW_ENEMY = "敌方后排"
+    FRONT_ROW_ALLY = "友方前排"
+    BACK_ROW_ALLY = "友方后排"
+    AREA_ENEMY = "区域敌人"  # 区域内的敌人
+    AREA_ALLY = "区域友军"  # 区域内的友军
 
 
 class Skill(ABC):
@@ -37,7 +41,7 @@ class Skill(ABC):
                  skill_type: SkillType,
                  target_type: TargetType,
                  cooldown: int = 0,
-                 energy_cost: int = 0):
+                 morale_cost: int = 0):
         """
         初始化技能
         
@@ -48,7 +52,7 @@ class Skill(ABC):
             skill_type: 技能类型
             target_type: 目标类型
             cooldown: 冷却回合数
-            energy_cost: 能量消耗
+            morale_cost: 士气消耗
         """
         self.skill_id = skill_id
         self.name = name
@@ -56,8 +60,7 @@ class Skill(ABC):
         self.skill_type = skill_type
         self.target_type = target_type
         self.cooldown = cooldown
-        self.energy_cost = energy_cost
-        self.current_cooldown = 0
+        self.morale_cost = morale_cost
     
     @abstractmethod
     def execute(self, caster, targets: List, battle_context) -> Dict[str, Any]:
@@ -74,21 +77,31 @@ class Skill(ABC):
         """
         pass
     
-    def can_use(self, caster) -> bool:
+    def can_use(self, caster, team=None) -> bool:
         """
         检查是否可以使用技能
         
         Args:
             caster: 施法者
+            team: 队伍对象（用于检查士气）
             
         Returns:
             是否可以使用
         """
-        return (self.current_cooldown <= 0 and 
-                caster.is_alive and
-                hasattr(caster, 'energy') and caster.energy >= self.energy_cost)
+        if not caster.is_alive:
+            return False
+        
+        # 检查施法者的技能冷却（而不是技能对象的冷却）
+        if hasattr(caster, 'active_skill_cooldown') and caster.active_skill_cooldown > 0:
+            return False
+        
+        # 如果提供了队伍对象，检查士气
+        if team is not None:
+            return team.current_morale >= self.morale_cost
+        
+        return True
     
-    def use_skill(self, caster, targets: List, battle_context) -> Dict[str, Any]:
+    def use_skill(self, caster, targets: List, battle_context, team=None) -> Dict[str, Any]:
         """
         使用技能
         
@@ -96,49 +109,62 @@ class Skill(ABC):
             caster: 施法者
             targets: 目标列表
             battle_context: 战斗上下文
+            team: 队伍对象（用于管理士气）
             
         Returns:
             技能使用结果
         """
-        if not self.can_use(caster):
+        if not self.can_use(caster, team):
             return {"success": False, "message": "技能无法使用"}
         
-        # 扣除能量和设置冷却
-        if hasattr(caster, 'energy'):
-            caster.energy -= self.energy_cost
-        self.current_cooldown = self.cooldown
+        # 如果有队伍对象，通过队伍消耗士气
+        if team is not None:
+            if not team.consume_morale(self.morale_cost):
+                return {"success": False, "message": "士气不足"}
+        
+        # 设置施法者的技能冷却（而不是技能对象的冷却）
+        if hasattr(caster, 'active_skill_cooldown'):
+            caster.active_skill_cooldown = self.cooldown
         
         # 执行技能效果
         result = self.execute(caster, targets, battle_context)
         result["skill_name"] = self.name
         result["caster"] = caster.name
+        result["morale_consumed"] = self.morale_cost
+        if team:
+            result["remaining_morale"] = team.current_morale
         
         return result
     
-    def update_cooldown(self):
-        """更新冷却时间"""
-        if self.current_cooldown > 0:
-            self.current_cooldown -= 1
+    # 移除 update_cooldown 方法，因为冷却现在由武将管理
+    # def update_cooldown(self):
 
 
-class AttackSkill(Skill):
-    """攻击型技能"""
+class DamageSkill(Skill):
+    """伤害技能"""
     
     def __init__(self, skill_id: str, name: str, description: str, 
                  target_type: TargetType, damage_multiplier: float = 1.0,
-                 cooldown: int = 0, energy_cost: int = 0):
-        super().__init__(skill_id, name, description, SkillType.ACTIVE, 
-                        target_type, cooldown, energy_cost)
+                 cooldown: int = 0, morale_cost: int = 0):
+        super().__init__(skill_id, name, description, SkillType.DAMAGE, 
+                        target_type, cooldown, morale_cost)
         self.damage_multiplier = damage_multiplier
     
     def execute(self, caster, targets: List, battle_context) -> Dict[str, Any]:
-        """执行攻击技能"""
+        """
+        执行伤害技能
+        Args:
+            caster: 施法者
+            targets: 目标列表
+            battle_context: 战斗上下文
+        """
         results = []
         total_damage = 0
         
         for target in targets:
             if target.is_alive:
-                damage = int(caster.get_effective_attack() * self.damage_multiplier)
+                # 使用新的伤害计算逻辑
+                damage = int(caster.calculate_damage_to(target) * self.damage_multiplier)
                 actual_damage = target.take_damage(damage)
                 total_damage += actual_damage
                 
@@ -150,77 +176,74 @@ class AttackSkill(Skill):
         
         return {
             "success": True,
-            "type": "attack",
+            "type": "damage",
             "total_damage": total_damage,
             "targets_hit": len(results),
             "details": results
         }
 
 
-class HealSkill(Skill):
-    """治疗型技能"""
+class EnhanceWeakenSkill(Skill):
+    """强化/虚弱技能"""
     
     def __init__(self, skill_id: str, name: str, description: str,
-                 target_type: TargetType, heal_amount: int,
-                 cooldown: int = 0, energy_cost: int = 0):
-        super().__init__(skill_id, name, description, SkillType.ACTIVE,
-                        target_type, cooldown, energy_cost)
-        self.heal_amount = heal_amount
-    
-    def execute(self, caster, targets: List, battle_context) -> Dict[str, Any]:
-        """执行治疗技能"""
-        results = []
-        total_heal = 0
-        
-        for target in targets:
-            if target.is_alive:
-                actual_heal = target.heal(self.heal_amount)
-                total_heal += actual_heal
-                
-                results.append({
-                    "target": target.name,
-                    "heal": actual_heal,
-                    "target_hp": target.current_hp
-                })
-        
-        return {
-            "success": True,
-            "type": "heal",
-            "total_heal": total_heal,
-            "targets_healed": len(results),
-            "details": results
-        }
-
-
-class BuffSkill(Skill):
-    """增益技能"""
-    
-    def __init__(self, skill_id: str, name: str, description: str,
-                 target_type: TargetType, buff_type: str, buff_value: int,
-                 duration: int, cooldown: int = 0, energy_cost: int = 0):
-        super().__init__(skill_id, name, description, SkillType.ACTIVE,
-                        target_type, cooldown, energy_cost)
-        self.buff_type = buff_type
-        self.buff_value = buff_value
+                 target_type: TargetType, effect_type: str, effect_value: int,
+                 duration: int, cooldown: int = 0, morale_cost: int = 0):
+        super().__init__(skill_id, name, description, SkillType.ENHANCE_WEAKEN,
+                        target_type, cooldown, morale_cost)
+        self.effect_type = effect_type  # 如: 'force_boost', 'intelligence_reduction' 等
+        self.effect_value = effect_value
         self.duration = duration
     
     def execute(self, caster, targets: List, battle_context) -> Dict[str, Any]:
-        """执行增益技能"""
+        """执行强化/虚弱技能"""
         results = []
         
         for target in targets:
             if target.is_alive:
-                target.add_buff(self.buff_type, self.buff_value, self.duration)
+                # 判断是增益还是减益
+                if "boost" in self.effect_type or "enhance" in self.effect_type:
+                    target.add_buff(self.effect_type, self.effect_value, self.duration)
+                    effect_name = "强化技能"
+                else:
+                    target.add_debuff(self.effect_type, self.effect_value, self.duration)
+                    effect_name = "虚弱技能"
+                
                 results.append({
                     "target": target.name,
-                    "buff_type": self.buff_type,
-                    "buff_value": self.buff_value,
-                    "duration": self.duration
+                    "effect_type": self.effect_type,
+                    "effect_value": self.effect_value,
+                    "duration": self.duration,
+                    "effect_name": effect_name
                 })
         
         return {
             "success": True,
-            "type": "buff",
-            "targets_buffed": len(results),
+            "type": "enhance_weaken",
+            "targets_affected": len(results),
             "details": results
         }
+
+
+class PassiveSkill(Skill):
+    """被动技能（基于武将属性）"""
+    
+    def __init__(self, skill_id: str, name: str, description: str, 
+                 attribute_type: str):
+        # 被动技能不需要目标类型、冷却和士气消耗
+        super().__init__(skill_id, name, description, SkillType.PASSIVE, 
+                        TargetType.SELF, 0, 0)
+        self.attribute_type = attribute_type  # 对应武将的某个attribute
+    
+    def execute(self, caster, targets: List, battle_context) -> Dict[str, Any]:
+        """被动技能的执行（通常在特定时机触发）"""
+        return {
+            "success": True,
+            "type": "passive",
+            "attribute_type": self.attribute_type,
+            "message": f"{caster.name}的{self.name}被动技能触发"
+        }
+    
+    def can_use(self, caster, team=None) -> bool:
+        """被动技能总是可以使用（在满足触发条件时）"""
+        return caster.is_alive

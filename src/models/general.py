@@ -3,8 +3,11 @@
 定义武将的基本属性和行为
 """
 
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, TYPE_CHECKING
 from enum import Enum
+
+if TYPE_CHECKING:
+    from ..skills.skill_base import Skill, PassiveSkill
 
 
 class Camp(Enum):
@@ -53,11 +56,12 @@ class General:
                  name: str,
                  camp: Camp,
                  rarity: Rarity,
-                 max_hp: int,
+                 cost: float,
                  force: int,
                  intelligence: int,
                  attribute: List[Attribute] = None,
-                 skills: List[str] = None):
+                 active_skill: 'Skill' = None,
+                 passive_skills: List['PassiveSkill'] = None):
         """
         初始化武将
         
@@ -66,28 +70,35 @@ class General:
             name: 武将姓名
             camp: 所属阵营
             rarity: 稀有度
-            max_hp: 最大生命值
+            cost: 费用
             force: 武力
             intelligence: 智力
-            attribute:属性
-            skills: 技能列表
+            attribute: 属性列表（对应被动技能）
+            active_skill: 主动技能（只能有一个）
+            passive_skills: 被动技能列表（基于attribute）
         """
         self.general_id = general_id
         self.name = name
         self.camp = camp
         self.rarity = rarity
-        self.max_hp = max_hp
-        self.current_hp = max_hp
+        self.cost = cost
         self.force = force
         self.intelligence = intelligence
+        # 最大生命值 = 武力 + 智力
+        self.max_hp = force + intelligence
+        self.current_hp = self.max_hp
         self.attribute = attribute or []
-        self.skills = skills or []
+        self.active_skill = active_skill
+        self.passive_skills = passive_skills or []
         
         # 战斗状态
         self.position: Optional[Position] = None
         self.is_alive = True
         self.buffs: List[Dict] = []  # 增益效果
         self.debuffs: List[Dict] = []  # 减益效果
+        
+        # 技能冷却管理
+        self.active_skill_cooldown = 0  # 主动技能当前冷却时间
         
     def take_damage(self, damage: int) -> int:
         """
@@ -220,7 +231,7 @@ class General:
         })
     
     def update_effects(self):
-        """更新效果持续时间"""
+        """更新效果持续时间和技能冷却"""
         self.buffs = [buff for buff in self.buffs if buff['duration'] > 1]
         self.debuffs = [debuff for debuff in self.debuffs if debuff['duration'] > 1]
         
@@ -229,6 +240,58 @@ class General:
             buff['duration'] -= 1
         for debuff in self.debuffs:
             debuff['duration'] -= 1
+            
+        # 更新主动技能冷却
+        if self.active_skill_cooldown > 0:
+            self.active_skill_cooldown -= 1
+    
+    def can_use_active_skill(self) -> bool:
+        """检查是否可以使用主动技能"""
+        if not self.is_alive:
+            return False
+        if not self.active_skill:
+            return False
+        if self.active_skill_cooldown > 0:
+            return False
+        return True
+    
+    def use_active_skill(self, targets: List['General'], battle_context, team=None) -> Dict:
+        """
+        使用主动技能
+        
+        Args:
+            targets: 目标列表
+            battle_context: 战斗上下文
+            team: 队伍对象（用于管理士气）
+            
+        Returns:
+            技能使用结果
+        """
+        if not self.can_use_active_skill():
+            return {"success": False, "message": "无法使用主动技能"}
+        
+        if not self.active_skill:
+            return {"success": False, "message": "没有主动技能"}
+        
+        # 如果有队伍对象，检查并消耗士气
+        if team is not None:
+            if team.current_morale < self.active_skill.morale_cost:
+                return {"success": False, "message": "士气不足"}
+            if not team.consume_morale(self.active_skill.morale_cost):
+                return {"success": False, "message": "士气消耗失败"}
+        
+        # 设置冷却时间
+        self.active_skill_cooldown = self.active_skill.cooldown
+        
+        # 执行技能效果
+        result = self.active_skill.execute(self, targets, battle_context)
+        result["skill_name"] = self.active_skill.name
+        result["caster"] = self.name
+        result["morale_consumed"] = self.active_skill.morale_cost
+        if team:
+            result["remaining_morale"] = team.current_morale
+        
+        return result
     
     def __str__(self) -> str:
         """字符串表示"""
@@ -245,9 +308,12 @@ class General:
             'rarity': self.rarity.value,
             'max_hp': self.max_hp,
             'current_hp': self.current_hp,
+            'cost': self.cost,
             'force': self.force,
             'intelligence': self.intelligence,
             'attribute': [attr.value for attr in self.attribute],
-            'skills': self.skills,
+            'active_skill': self.active_skill.name if self.active_skill else None,
+            'active_skill_cooldown': self.active_skill_cooldown,
+            'passive_skills': [skill.name for skill in self.passive_skills],
             'is_alive': self.is_alive
         }
