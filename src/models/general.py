@@ -100,22 +100,53 @@ class General:
         # 技能冷却管理
         self.active_skill_cooldown = 0  # 主动技能当前冷却时间
         
-    def take_damage(self, damage: int) -> int:
+    def take_damage(self, damage: int, attacker: 'General' = None) -> int:
         """
         受到伤害
         
         Args:
             damage: 伤害值
+            attacker: 攻击者（用于触发被动技能）
             
         Returns:
             实际受到的伤害
         """
+        original_damage = damage
         actual_damage = max(0, damage)
+        
+        # 触发防栅被动技能
+        if self.has_passive_skill("防栅"):
+            fence_passive = self.get_passive_skill("防栅")
+            actual_damage = fence_passive.trigger_on_receive_damage(self, actual_damage)
+        
+        # 触发连环被动技能（伤害分担）
+        if self.has_passive_skill("连环"):
+            # TODO: 需要传入团队信息来实现连环伤害分担
+            pass
+        
+        # 记录是否是致死伤害
+        is_fatal = (self.current_hp - actual_damage) <= 0
+        fatal_damage = actual_damage if is_fatal else 0
+        
         self.current_hp = max(0, self.current_hp - actual_damage)
         
         if self.current_hp <= 0:
             self.is_alive = False
             
+            # 触发复活被动技能
+            if self.has_passive_skill("复活"):
+                revive_passive = self.get_passive_skill("复活")
+                if revive_passive.trigger_on_death(self):
+                    # 复活成功，记录日志
+                    pass
+            
+            # 触发魅力被动技能（反弹伤害）
+            if self.has_passive_skill("魅力") and attacker:
+                charisma_passive = self.get_passive_skill("魅力")
+                return_damage = charisma_passive.trigger_on_death(self, attacker, fatal_damage)
+                if return_damage > 0:
+                    attacker.take_damage(return_damage)
+                    
         return actual_damage
     
     def heal(self, amount: int) -> int:
@@ -210,7 +241,18 @@ class General:
             return 0
         
         damage = self.calculate_damage_to(target)
-        actual_damage = target.take_damage(damage)
+        
+        # 触发勇猛被动技能
+        if self.has_passive_skill("勇猛"):
+            bravery_passive = self.get_passive_skill("勇猛")
+            damage = bravery_passive.trigger_on_attack(self, target, damage)
+        
+        # 触发伏兵破隐（使用技能后）
+        if self.has_passive_skill("伏兵"):
+            ambush_passive = self.get_passive_skill("伏兵")
+            ambush_passive.reveal_after_skill_use()
+        
+        actual_damage = target.take_damage(damage, self)
         
         return actual_damage
     
@@ -244,6 +286,42 @@ class General:
         # 更新主动技能冷却
         if self.active_skill_cooldown > 0:
             self.active_skill_cooldown -= 1
+    
+    def trigger_turn_start_passives(self):
+        """触发回合开始时的被动技能"""
+        # 触发募兵被动技能
+        if self.has_passive_skill("募兵"):
+            recruit_passive = self.get_passive_skill("募兵")
+            heal_amount = recruit_passive.trigger_on_turn_start(self)
+            if heal_amount > 0:
+                # 记录治疗日志
+                pass
+    
+    def has_passive_skill(self, skill_name: str) -> bool:
+        """检查是否拥有指定的被动技能"""
+        return any(skill.name == skill_name for skill in self.passive_skills)
+    
+    def get_passive_skill(self, skill_name: str):
+        """获取指定的被动技能实例"""
+        for skill in self.passive_skills:
+            if skill.name == skill_name:
+                return skill
+        return None
+    
+    def can_be_targeted_by_enemy(self, team_generals=None) -> bool:
+        """检查是否可以被敌方选中（考虑伏兵等效果）"""
+        if not self.is_alive:
+            return False
+        
+        # 检查伏兵被动技能
+        if self.has_passive_skill("伏兵"):
+            ambush_passive = self.get_passive_skill("伏兵")
+            if team_generals:
+                return ambush_passive.can_be_targeted(self, team_generals)
+            else:
+                return not ambush_passive.is_hidden
+        
+        return True
     
     def can_use_active_skill(self) -> bool:
         """检查是否可以使用主动技能"""
