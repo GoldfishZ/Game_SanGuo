@@ -199,23 +199,43 @@ class EnhanceWeakenSkill(Skill):
         """执行强化/虚弱技能"""
         results = []
         
-        for target in targets:
-            if target.is_alive:
-                # 判断是增益还是减益
-                if "boost" in self.effect_type or "enhance" in self.effect_type:
-                    target.add_buff(self.effect_type, self.effect_value, self.duration)
-                    effect_name = "强化技能"
-                else:
-                    target.add_debuff(self.effect_type, self.effect_value, self.duration)
-                    effect_name = "虚弱技能"
+        # 检查是否是队伍效果（士气相关）
+        if "morale" in self.effect_type and hasattr(battle_context, 'get_team_for_general'):
+            # 队伍级别的效果
+            team = battle_context.get_team_for_general(caster)
+            if team and self.effect_type == "morale_max_boost":
+                old_max = team.max_morale
+                team.max_morale += self.effect_value
+                # 当前士气也增加相同数值（立即生效）
+                team.current_morale += self.effect_value
                 
                 results.append({
-                    "target": target.name,
-                    "effect_type": self.effect_type,
-                    "effect_value": self.effect_value,
-                    "duration": self.duration,
-                    "effect_name": effect_name
+                    "target": "队伍",
+                    "effect_type": "最大士气增加",
+                    "old_max_morale": old_max,
+                    "new_max_morale": team.max_morale,
+                    "morale_gained": self.effect_value,
+                    "current_morale": team.current_morale
                 })
+        else:
+            # 武将个体效果
+            for target in targets:
+                if target.is_alive:
+                    # 判断是增益还是减益
+                    if "boost" in self.effect_type or "enhance" in self.effect_type:
+                        target.add_buff(self.effect_type, self.effect_value, self.duration)
+                        effect_name = "强化技能"
+                    else:
+                        target.add_debuff(self.effect_type, self.effect_value, self.duration)
+                        effect_name = "虚弱技能"
+                    
+                    results.append({
+                        "target": target.name,
+                        "effect_type": self.effect_type,
+                        "effect_value": self.effect_value,
+                        "duration": self.duration,
+                        "effect_name": effect_name
+                    })
         
         return {
             "success": True,
@@ -224,6 +244,45 @@ class EnhanceWeakenSkill(Skill):
             "details": results
         }
 
+class TeamEffectSkill(Skill):
+    """队伍效果技能 - 影响整个队伍的技能"""
+    
+    def __init__(self, skill_id: str, name: str, description: str,
+                 target_type: TargetType, effect_type: str, effect_value: int,
+                 cooldown: int = 0, morale_cost: int = 0):
+        super().__init__(skill_id, name, description, SkillType.ENHANCE_WEAKEN,
+                        target_type, cooldown, morale_cost)
+        self.effect_type = effect_type
+        self.effect_value = effect_value
+    
+    def execute(self, caster, targets: List, battle_context) -> Dict[str, Any]:
+        """执行队伍效果技能"""
+        results = []
+        
+        # 获取施法者的队伍
+        team = battle_context.get_team_for_general(caster)
+        
+        if self.effect_type == "max_morale_boost":
+            # 增加队伍最大士气值
+            old_max = team.max_morale
+            team.max_morale += self.effect_value
+            # 当前士气也增加相同数值
+            team.current_morale += self.effect_value
+            
+            results.append({
+                "effect": "最大士气增加",
+                "old_max_morale": old_max,
+                "new_max_morale": team.max_morale,
+                "morale_gained": self.effect_value
+            })
+        
+        return {
+            "success": True,
+            "type": "team_effect", 
+            "effect_type": self.effect_type,
+            "effect_value": self.effect_value,
+            "details": results
+        }
 
 class PassiveSkill(Skill):
     """被动技能（基于武将属性）"""

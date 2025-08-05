@@ -4,13 +4,10 @@
 
 import sys
 import os
-import pygame
 
 # 添加项目根目录到路径
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
-from src.models.game import Game
-from src.ui.game_ui import GameUI
 from game_data.game_data_manager import game_data_manager
 from game_data.generals_gallery import show_generals_gallery, interactive_gallery
 
@@ -57,14 +54,11 @@ def start_game():
     print("\n🚀 启动游戏...")
     
     try:
-        # 初始化pygame
-        pygame.init()
+        # 导入游戏流程控制器
+        from src.models.game_flow import GameFlowController
         
-        # 初始化游戏
-        game = Game()
-        
-        # 初始化UI
-        ui = GameUI(game)
+        # 创建游戏流程控制器
+        game_flow = GameFlowController()
         
         print("✅ 游戏初始化成功!")
         
@@ -74,16 +68,18 @@ def start_game():
         print(f"  可用武将: {info['total_generals']}名")
         print(f"  可用技能: {info['total_skills']}个")
         
-        print("\n🎮 启动图形界面...")
-        ui.run()
+        print("\n🎮 开始游戏流程...")
+        
+        # 启动游戏主流程
+        game_flow.start_game()
         
         return True
         
     except Exception as e:
         print(f"❌ 游戏初始化失败: {e}")
+        import traceback
+        traceback.print_exc()
         return False
-    finally:
-        pygame.quit()
 
 
 def main():

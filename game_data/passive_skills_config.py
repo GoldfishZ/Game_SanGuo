@@ -15,7 +15,7 @@ class BraveryPassive(PassiveSkill):
         super().__init__(
             skill_id="bravery_passive",
             name="勇猛",
-            description="拥有勇猛的武将在普攻对敌方造成伤害时，若自身生命小于等于最大生命值的一半，那么可以进行一次判定，若判定成功，那么本次造成的伤害值*1.5（四舍五入到整数）",
+            description="在普攻对敌方造成伤害时，若自身生命小于等于最大生命值的一半，那么可以进行一次判定，若判定成功，那么本次造成的伤害值*1.5（四舍五入到整数）",
             attribute_type="BRAVERY"
         )
     
@@ -43,7 +43,7 @@ class CharismaPassive(PassiveSkill):
         super().__init__(
             skill_id="charisma_passive",
             name="魅力",
-            description="拥有魅力的武将在被击杀后可以进行一次判定，若判定成功则可以返还自身受到致死伤害的一半给攻击者",
+            description="被击杀后可以进行一次判定，若判定成功则可以返还自身受到致死伤害的一半给攻击者",
             attribute_type="CHARISMA"
         )
     
@@ -68,7 +68,7 @@ class RecruitPassive(PassiveSkill):
         super().__init__(
             skill_id="recruit_passive",
             name="募兵",
-            description="拥有募兵的武将若有生命损失，则每回合可以回复一点生命",
+            description="若有生命损失，则每回合可以回复一点生命",
             attribute_type="RECRUIT"
         )
     
@@ -170,7 +170,7 @@ class AmbushPassive(PassiveSkill):
         super().__init__(
             skill_id="ambush_passive",
             name="伏兵",
-            description="拥有伏兵的武将在使用技能之前不会被敌方选中，若己方只剩下拥有伏兵的武将存活，伏兵自动破隐",
+            description="在使用技能之前不会被敌方选中，若己方只剩下拥有伏兵的武将存活，伏兵自动破隐",
             attribute_type="AMBUSH"
         )
         self.is_hidden = True  # 隐藏状态
