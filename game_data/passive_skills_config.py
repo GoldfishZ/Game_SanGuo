@@ -210,21 +210,21 @@ CHAIN_PASSIVE = ChainPassive()
 REVIVE_PASSIVE = RevivePassive()
 AMBUSH_PASSIVE = AmbushPassive()
 
-# 属性到被动技能的映射
-ATTRIBUTE_TO_PASSIVE = {
-    Attribute.BRAVERY: BRAVERY_PASSIVE,
-    Attribute.CHARISMA: CHARISMA_PASSIVE,
-    Attribute.RECRUIT: RECRUIT_PASSIVE,
-    Attribute.FENCE: FENCE_PASSIVE,
-    Attribute.CHAIN: CHAIN_PASSIVE,
-    Attribute.REVIVE: REVIVE_PASSIVE,
-    Attribute.AMBUSH: AMBUSH_PASSIVE
+# 属性到被动技能类的映射（每次调用 get_passive_skills_for_attributes 创建新实例）
+ATTRIBUTE_TO_PASSIVE_CLASS = {
+    Attribute.BRAVERY: BraveryPassive,
+    Attribute.CHARISMA: CharismaPassive,
+    Attribute.RECRUIT: RecruitPassive,
+    Attribute.FENCE: FencePassive,
+    Attribute.CHAIN: ChainPassive,
+    Attribute.REVIVE: RevivePassive,
+    Attribute.AMBUSH: AmbushPassive
 }
 
 def get_passive_skills_for_attributes(attributes):
-    """根据武将属性获取对应的被动技能列表"""
+    """根据武将属性获取对应的被动技能列表（每次创建新的技能实例，避免状态共享）"""
     passive_skills = []
     for attr in attributes:
-        if attr in ATTRIBUTE_TO_PASSIVE:
-            passive_skills.append(ATTRIBUTE_TO_PASSIVE[attr])
+        if attr in ATTRIBUTE_TO_PASSIVE_CLASS:
+            passive_skills.append(ATTRIBUTE_TO_PASSIVE_CLASS[attr]())
     return passive_skills

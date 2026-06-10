@@ -105,19 +105,19 @@ def test_game_flow():
 
 def test_turn_switching():
     """测试回合切换逻辑"""
-    print("   测试回合切换规则（先手1回合，后手2回合，然后交替）")
-    
+    print("   测试回合切换规则（A-B-A-B交替，后手有士气补偿）")
+
     game_flow = GameFlowController()
     game_flow.first_player = game_flow.player1
     game_flow.current_player = game_flow.player1
-    
+
     expected_sequence = [
         (1, "玩家1"),  # 第1回合：先手玩家
         (2, "玩家2"),  # 第2回合：后手玩家
-        (3, "玩家2"),  # 第3回合：后手玩家（连续2回合）
-        (4, "玩家1"),  # 第4回合：开始交替
-        (5, "玩家2"),  # 第5回合：继续交替
-        (6, "玩家1"),  # 第6回合：继续交替
+        (3, "玩家1"),  # 第3回合：交替
+        (4, "玩家2"),  # 第4回合：交替
+        (5, "玩家1"),  # 第5回合：交替
+        (6, "玩家2"),  # 第6回合：交替
     ]
     
     results = []
@@ -218,7 +218,7 @@ def main():
         print("   ✅ 武将池生成：15位随机武将")
         print("   ✅ 选将流程：玩家选择武将加入队伍")  
         print("   ✅ 抛骰子：决定先手玩家")
-        print("   ✅ 回合制：先手1回合，后手2回合，然后交替")
+        print("   ✅ 回合制：A-B-A-B交替，后手获得士气补偿")
         print("   ✅ 战斗阶段：技能使用 → 普攻")
         print("   ✅ 游戏结束：全军覆没判定")
         

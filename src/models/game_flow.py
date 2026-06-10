@@ -52,6 +52,7 @@ class GameFlowController:
         self.turn_count = 0
         self.general_pool: List[General] = []
         self.first_player: Optional[Player] = None
+        self.second_player: Optional[Player] = None
         
     def start_game(self):
         """开始游戏主流程"""
@@ -258,32 +259,40 @@ class GameFlowController:
         """抛骰子决定先手玩家"""
         print("\n🎲 抛骰子决定先手玩家")
         print("=" * 30)
-        
+
         self.current_phase = GamePhase.DICE_ROLL
-        
+
         # 玩家1抛骰子
         dice1 = random.randint(1, 6)
         print(f"{self.player1.name} 抛出了：{dice1}")
-        
+
         # 玩家2抛骰子
         dice2 = random.randint(1, 6)
         print(f"{self.player2.name} 抛出了：{dice2}")
-        
+
         # 决定先手
         if dice1 > dice2:
             self.first_player = self.player1
+            self.second_player = self.player2
             print(f"🎯 {self.player1.name} 点数更大，获得先手！")
         elif dice2 > dice1:
             self.first_player = self.player2
+            self.second_player = self.player1
             print(f"🎯 {self.player2.name} 点数更大，获得先手！")
         else:
             # 平局重新抛
             print("🎲 点数相同，重新抛骰子！")
             self._roll_dice_for_first_player()
             return
-        
+
         # 设置当前玩家
         self.current_player = self.first_player
+
+        # 后手补偿：后手玩家初始士气上限+2，当前士气也+2
+        compensation = 2
+        self.second_player.team.max_morale += compensation
+        self.second_player.team.current_morale += compensation
+        print(f"🎁 后手补偿：{self.second_player.name} 初始士气上限+{compensation}（当前 {self.second_player.team.current_morale}/{self.second_player.team.max_morale}）")
     
     def _enter_battle_phase(self):
         """进入战斗阶段"""
@@ -328,7 +337,7 @@ class GameFlowController:
         self.current_phase = GamePhase.SKILL_PHASE
         
         # 显示可用技能
-        available_generals = self.current_player.team.get_living_generals()
+        available_generals = self.current_player.team.get_alive_generals()
         
         if not available_generals:
             print("❌ 没有存活的武将可以使用技能")
@@ -399,11 +408,11 @@ class GameFlowController:
         if target_type == TargetType.SELF:
             return [caster]
         elif target_type == TargetType.ALL_ALLIES:
-            return self.current_player.team.get_living_generals()
+            return self.current_player.team.get_alive_generals()
         elif target_type == TargetType.SINGLE_ENEMY:
             # 让玩家选择敌方目标
             enemy_player = self.player2 if self.current_player == self.player1 else self.player1
-            enemy_generals = enemy_player.team.get_living_generals()
+            enemy_generals = enemy_player.team.get_alive_generals()
             
             if not enemy_generals:
                 print("❌ 没有可攻击的敌方武将")
@@ -496,11 +505,11 @@ class GameFlowController:
     def _display_battle_status(self):
         """显示战斗状态"""
         print("\n📊 当前战斗状态：")
-        
+
         for player in [self.player1, self.player2]:
             print(f"\n{player.name} (士气:{player.team.current_morale}/{player.team.max_morale}):")
-            living_generals = player.team.get_living_generals()
-            dead_generals = player.team.get_dead_generals()
+            living_generals = player.team.get_alive_generals()
+            dead_generals = player.team.get_defeated_generals()
             
             print("  存活武将:")
             for general in living_generals:
@@ -512,18 +521,8 @@ class GameFlowController:
                     print(f"    {general.name} (已阵亡)")
     
     def _switch_to_next_player(self):
-        """切换到下一个玩家"""
-        # 按照规则：先手玩家1回合，后手玩家2回合，然后交替
-        if self.turn_count == 1:
-            # 第一回合结束，切换到另一个玩家，他将进行2回合
-            self.current_player = self.player2 if self.current_player == self.player1 else self.player1
-        elif self.turn_count == 3:
-            # 前3回合结束，开始正常交替
-            self.current_player = self.player2 if self.current_player == self.player1 else self.player1
-        elif self.turn_count > 3:
-            # 正常交替
-            self.current_player = self.player2 if self.current_player == self.player1 else self.player1
-        # turn_count == 2时不切换，继续是同一个玩家
+        """切换到下一个玩家（A-B-A-B交替，后手已获得初始士气补偿）"""
+        self.current_player = self.player2 if self.current_player == self.player1 else self.player1
     
     def _is_game_over(self) -> bool:
         """检查游戏是否结束"""

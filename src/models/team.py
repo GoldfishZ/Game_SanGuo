@@ -233,20 +233,28 @@ class Team:
     def get_alive_generals(self) -> List['General']:
         """
         获取存活的武将列表
-        
+
         Returns:
             List[General]: 存活的武将列表
         """
-        return [general for general in self.generals if general.is_alive()]
-    
+        return [general for general in self.generals if general.is_alive]
+
+    def get_living_generals(self) -> List['General']:
+        """获取存活武将列表（get_alive_generals 的别名）"""
+        return self.get_alive_generals()
+
     def get_defeated_generals(self) -> List['General']:
         """
         获取已败的武将列表
-        
+
         Returns:
             List[General]: 已败的武将列表
         """
-        return [general for general in self.generals if not general.is_alive()]
+        return [general for general in self.generals if not general.is_alive]
+
+    def get_dead_generals(self) -> List['General']:
+        """获取已阵亡武将列表（get_defeated_generals 的别名）"""
+        return self.get_defeated_generals()
     
     def is_defeated(self) -> bool:
         """
@@ -340,6 +348,60 @@ class Team:
         """重置士气到最大值"""
         self.current_morale = self.max_morale
     
+    def consume_morale(self, amount: int) -> bool:
+        """
+        消耗士气（技能使用时的士气扣除）
+
+        Args:
+            amount: 要消耗的士气值
+
+        Returns:
+            bool: 是否成功消耗
+        """
+        if self.current_morale < amount:
+            return False
+        self.current_morale -= amount
+        return True
+
+    def can_use_skill(self, general: 'General') -> bool:
+        """
+        检查武将是否可以使用主动技能
+
+        Args:
+            general: 要检查的武将
+
+        Returns:
+            bool: 是否可以使用技能
+        """
+        if not general.is_alive:
+            return False
+        if not general.active_skill:
+            return False
+        if general.active_skill_cooldown > 0:
+            return False
+        if self.current_morale < general.active_skill.morale_cost:
+            return False
+        return True
+
+    def use_skill(self, general: 'General', targets: list, battle_context) -> dict:
+        """
+        使用武将的主动技能
+
+        Args:
+            general: 使用技能的武将
+            targets: 目标列表
+            battle_context: 战斗上下文
+
+        Returns:
+            dict: 技能使用结果
+        """
+        return general.use_active_skill(targets, battle_context, self)
+
+    def update_effects(self):
+        """更新队伍中所有武将的效果持续时间和技能冷却"""
+        for general in self.generals:
+            general.update_effects()
+
     def get_team_info(self) -> str:
         """
         获取队伍信息字符串
