@@ -1,92 +1,106 @@
 """
 三国武将配置
-定义游戏中所有可用的武将
+从 generals_data.py 数据文件读取，自动创建所有武将实例
 """
 
 from src.models.general import General, Camp, Rarity, Attribute
 from .skills_config import get_skill_by_id
 from .passive_skills_config import get_passive_skills_for_attributes
+from .generals_data import GENERALS_DATA
 
 
-# ==================== 武将创建函数 ====================
+# ==================== 数据 → 武将 映射 ====================
 
-def create_zhang_ren():
-    """创建张任"""
-    attributes = [Attribute.AMBUSH]  # 伏兵属性
-    zhang_ren = General(
-        general_id=1001,
-        name="张任",
-        camp=Camp.TA,  # 他阵营
-        rarity=Rarity.COMMON,  # 普通卡
-        cost=1.5,
-        force=6,
-        intelligence=6,  # 最大生命 = 6+6 = 12
+CAMP_MAP = {
+    "魏": Camp.WEI, "蜀": Camp.SHU, "吴": Camp.WU,
+    "凉": Camp.LIANG, "袁": Camp.YUAN, "他": Camp.TA,
+}
+
+RARITY_MAP = {
+    "COMMON": Rarity.COMMON, "RARE": Rarity.RARE,
+    "EPIC": Rarity.EPIC, "LEGENDARY": Rarity.LEGENDARY,
+}
+
+ATTR_MAP = {
+    "勇猛": Attribute.BRAVERY, "魅力": Attribute.CHARISMA,
+    "募兵": Attribute.RECRUIT, "防栅": Attribute.FENCE,
+    "连环": Attribute.CHAIN, "复活": Attribute.REVIVE,
+    "伏兵": Attribute.AMBUSH,
+}
+
+
+def create_general_from_data(data: dict) -> General:
+    """根据数据字典创建一个武将实例"""
+    attributes = [ATTR_MAP[a] for a in data.get("attributes", [])]
+
+    general = General(
+        general_id=data["id"],
+        name=data["name"],
+        camp=CAMP_MAP[data["camp"]],
+        rarity=RARITY_MAP[data["rarity"]],
+        cost=data["cost"],
+        force=data["force"],
+        intelligence=data["intelligence"],
         attribute=attributes,
-        active_skill=get_skill_by_id("strength_tactics")  # 强化战术
+        active_skill=get_skill_by_id(data["skill_id"]),
+        image_file=data.get("image_file"),
     )
-    zhang_ren.passive_skills = get_passive_skills_for_attributes(zhang_ren.attribute)
-    return zhang_ren
-
-
-def create_jinhuan_sanjie():
-    """创建金环三结"""
-    jinhuan_sanjie = General(
-        general_id=1002,
-        name="金环三结",
-        camp=Camp.TA,  # 他阵营
-        rarity=Rarity.COMMON,  # 普通卡
-        cost=1.0,
-        force=3,
-        intelligence=1,  # 最大生命 = 3+1 = 4
-        attribute=[],  # 没有属性
-        active_skill=get_skill_by_id("strength_tactics")  # 强化战术
-    )
-    jinhuan_sanjie.passive_skills = []
-    return jinhuan_sanjie
-
-
-def create_lu_su():
-    """创建鲁肃"""
-    attributes = [Attribute.FENCE]  # 防栅属性
-    lu_su = General(
-        general_id=1003,
-        name="鲁肃",
-        camp=Camp.WU,  # 吴阵营
-        rarity=Rarity.RARE,  # 黑卡
-        cost=1.5,
-        force=4,
-        intelligence=8,  # 最大生命 = 4+8 = 12
-        attribute=attributes,
-        active_skill=get_skill_by_id("alliance_pact")  # 同盟缔结
-    )
-    lu_su.passive_skills = get_passive_skills_for_attributes(lu_su.attribute)
-    return lu_su
+    # 根据属性自动装配被动技能
+    general.passive_skills = get_passive_skills_for_attributes(general.attribute)
+    return general
 
 
 # ==================== 武将创建函数字典 ====================
 
-GENERAL_CREATORS = {
-    "zhang_ren": create_zhang_ren,
-    "jinhuan_sanjie": create_jinhuan_sanjie,
-    "lu_su": create_lu_su
-}
+# 懒加载：第一次使用时从数据文件创建
+_cache: dict = {}
+
+GENERAL_CREATORS = {}
+
+
+def _init_creators():
+    """初始化武将创建器（仅执行一次）"""
+    global GENERAL_CREATORS
+    if GENERAL_CREATORS:
+        return
+    for data in GENERALS_DATA:
+        general_id = data["id"]
+        # 使用英文名作为 key（方便命令行输入和引用）
+        import re
+        import unicodedata
+        # 简单的拼音转换：用 general_id 作为唯一 key
+        key = f"general_{general_id}"
+        # 同时添加中文名映射
+        name_key = data["name"]
+
+        # 工厂函数（每次调用创建新实例，保证被动技能独立）
+        def make_general(d=data):
+            return create_general_from_data(d)
+
+        GENERAL_CREATORS[key] = make_general
+        GENERAL_CREATORS[name_key] = make_general
+
+
+_init_creators()
+
 
 def get_all_generals():
-    """获取所有武将实例"""
-    return {name: creator() for name, creator in GENERAL_CREATORS.items()}
+    """获取所有武将实例（返回新对象字典）"""
+    return {data["name"]: create_general_from_data(data) for data in GENERALS_DATA}
+
 
 def get_general_by_name(name: str):
-    """根据名称创建武将实例"""
-    creator = GENERAL_CREATORS.get(name)
-    if creator:
-        return creator()
+    """根据中文名创建武将实例"""
+    for data in GENERALS_DATA:
+        if data["name"] == name:
+            return create_general_from_data(data)
     return None
+
 
 def get_generals_by_camp(camp: Camp):
     """根据阵营获取武将列表"""
     generals = []
-    for creator in GENERAL_CREATORS.values():
-        general = creator()
-        if general.camp == camp:
-            generals.append(general)
+    for data in GENERALS_DATA:
+        if CAMP_MAP[data["camp"]] == camp:
+            generals.append(create_general_from_data(data))
     return generals

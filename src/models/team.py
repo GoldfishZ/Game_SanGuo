@@ -201,30 +201,32 @@ class Team:
     def add_general(self, general: 'General') -> bool:
         """
         添加武将到队伍
-        
+
         Args:
             general: 要添加的武将
-            
+
         Returns:
             bool: 是否成功添加
         """
         if general not in self.generals:
             self.generals.append(general)
+            general._team = self  # 设置队伍引用（用于连环等被动技能）
             return True
         return False
-    
+
     def remove_general(self, general: 'General') -> bool:
         """
         从队伍中移除武将
-        
+
         Args:
             general: 要移除的武将
-            
+
         Returns:
             bool: 是否成功移除
         """
         if general in self.generals:
             self.generals.remove(general)
+            general._team = None  # 清除队伍引用
             # 同时从阵型中移除
             self.remove_general_from_formation(general)
             return True

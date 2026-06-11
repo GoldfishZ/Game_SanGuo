@@ -1,1 +1,2 @@
-# ui模块初始化文件
+# ui module
+from .cli_callbacks import CLIBattleCallbacks

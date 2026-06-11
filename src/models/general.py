@@ -51,7 +51,7 @@ class Attribute(Enum):
 class General:
     """武将类"""
     
-    def __init__(self, 
+    def __init__(self,
                  general_id: int,
                  name: str,
                  camp: Camp,
@@ -61,10 +61,11 @@ class General:
                  intelligence: int,
                  attribute: List[Attribute] = None,
                  active_skill: 'Skill' = None,
-                 passive_skills: List['PassiveSkill'] = None):
+                 passive_skills: List['PassiveSkill'] = None,
+                 image_file: str = None):
         """
         初始化武将
-        
+
         Args:
             general_id: 武将ID
             name: 武将姓名
@@ -76,6 +77,7 @@ class General:
             attribute: 属性列表（对应被动技能）
             active_skill: 主动技能（只能有一个）
             passive_skills: 被动技能列表（基于attribute）
+            image_file: 武将卡图片文件名（相对于 assets/images/generals/）
         """
         self.general_id = general_id
         self.name = name
@@ -90,6 +92,7 @@ class General:
         self.attribute = attribute or []
         self.active_skill = active_skill
         self.passive_skills = passive_skills or []
+        self.image_file = image_file  # 武将卡图片文件名
         
         # 战斗状态
         self.position: Optional[Position] = None
@@ -99,6 +102,9 @@ class General:
         
         # 技能冷却管理
         self.active_skill_cooldown = 0  # 主动技能当前冷却时间
+
+        # 所属队伍弱引用（由 Team.add_general 设置，用于连环等需要团队信息的被动技能）
+        self._team = None
         
     def take_damage(self, damage: int, attacker: 'General' = None) -> int:
         """
@@ -121,8 +127,21 @@ class General:
         
         # 触发连环被动技能（伤害分担）
         if self.has_passive_skill("连环"):
-            # TODO: 需要传入团队信息来实现连环伤害分担
-            pass
+            chain_passive = self.get_passive_skill("连环")
+            # 找到己方所有拥有连环的存活武将，分担伤害
+            chain_generals = []
+            if self._team:
+                for g in self._team.generals:
+                    if g.is_alive and g.has_passive_skill("连环"):
+                        chain_generals.append(g)
+            if len(chain_generals) > 1:
+                actual_damage = chain_passive.share_damage(chain_generals, actual_damage)
+                # 将分担后的伤害应用到每个连环武将（跳过自己，已经算过了）
+                for g in chain_generals:
+                    if g != self:
+                        g.current_hp = max(0, g.current_hp - actual_damage)
+                        if g.current_hp <= 0:
+                            g.is_alive = False
         
         # 记录是否是致死伤害
         is_fatal = (self.current_hp - actual_damage) <= 0
@@ -276,16 +295,34 @@ class General:
         """更新效果持续时间和技能冷却"""
         self.buffs = [buff for buff in self.buffs if buff['duration'] > 1]
         self.debuffs = [debuff for debuff in self.debuffs if debuff['duration'] > 1]
-        
+
         # 减少持续时间
         for buff in self.buffs:
             buff['duration'] -= 1
         for debuff in self.debuffs:
             debuff['duration'] -= 1
-            
+
         # 更新主动技能冷却
         if self.active_skill_cooldown > 0:
             self.active_skill_cooldown -= 1
+
+        # 连环：同步效果到所有连环武将
+        if self.has_passive_skill("连环") and self._team:
+            chain_generals = [
+                g for g in self._team.generals
+                if g.is_alive and g.has_passive_skill("连环")
+            ]
+            if len(chain_generals) > 1:
+                # 收集所有连环武将的 buff/debuff
+                all_buffs = []
+                all_debuffs = []
+                for g in chain_generals:
+                    all_buffs.extend(g.buffs)
+                    all_debuffs.extend(g.debuffs)
+                # 统一分配（去重后再分）
+                for g in chain_generals:
+                    g.buffs = [b.copy() for b in all_buffs]
+                    g.debuffs = [d.copy() for d in all_debuffs]
     
     def trigger_turn_start_passives(self):
         """触发回合开始时的被动技能"""
@@ -393,5 +430,6 @@ class General:
             'active_skill': self.active_skill.name if self.active_skill else None,
             'active_skill_cooldown': self.active_skill_cooldown,
             'passive_skills': [skill.name for skill in self.passive_skills],
-            'is_alive': self.is_alive
+            'is_alive': self.is_alive,
+            'image_file': self.image_file,
         }

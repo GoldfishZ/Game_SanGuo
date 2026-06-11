@@ -31,9 +31,18 @@ class BraveryPassive(PassiveSkill):
         return original_damage
     
     def judgment_check(self, caster) -> bool:
-        """判定检查（先留白）"""
-        # TODO: 实现具体判定逻辑
-        return True  # 临时返回True
+        """判定检查：武力越高成功率越高
+        - force >= 8: 80% 成功率
+        - force >= 6: 60% 成功率
+        - force < 6:  40% 成功率
+        """
+        force = caster.get_effective_force()
+        if force >= 8:
+            return random.random() < 0.8
+        elif force >= 6:
+            return random.random() < 0.6
+        else:
+            return random.random() < 0.4
 
 
 class CharismaPassive(PassiveSkill):
@@ -56,9 +65,18 @@ class CharismaPassive(PassiveSkill):
         return 0
     
     def judgment_check(self, caster) -> bool:
-        """判定检查（先留白）"""
-        # TODO: 实现具体判定逻辑
-        return True  # 临时返回True
+        """判定检查：智力越高成功率越高
+        - intelligence >= 8: 80% 成功率
+        - intelligence >= 6: 60% 成功率
+        - intelligence < 6:  40% 成功率
+        """
+        intelligence = caster.get_effective_intelligence()
+        if intelligence >= 8:
+            return random.random() < 0.8
+        elif intelligence >= 6:
+            return random.random() < 0.6
+        else:
+            return random.random() < 0.4
 
 
 class RecruitPassive(PassiveSkill):

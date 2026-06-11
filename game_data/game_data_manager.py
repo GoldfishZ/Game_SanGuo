@@ -34,21 +34,19 @@ class GameDataManager:
     
     def create_general(self, name: str) -> Optional[General]:
         """根据名称创建武将实例（返回新的对象）"""
-        # 导入创建函数
-        from .generals_config import (
-            create_zhang_ren, create_jinhuan_sanjie, create_lu_su
-        )
-        
-        # 武将创建函数映射
-        general_creators = {
-            "zhang_ren": create_zhang_ren,
-            "jinhuan_sanjie": create_jinhuan_sanjie,
-            "lu_su": create_lu_su
-        }
-        
-        creator_func = general_creators.get(name.lower())
-        if creator_func:
-            return creator_func()
+        from .generals_config import get_general_by_name, create_general_from_data, GENERALS_DATA
+
+        # 先尝试中文名精确匹配
+        result = get_general_by_name(name)
+        if result:
+            return result
+
+        # 兼容旧的英文名/拼音查找（如 "zhang_ren"）
+        for data in GENERALS_DATA:
+            pinyin = data.get("image_file", "").replace(".png", "")
+            if pinyin == name.lower():
+                return create_general_from_data(data)
+
         return None
     
     def get_generals_by_camp(self, camp: Camp) -> List[General]:
