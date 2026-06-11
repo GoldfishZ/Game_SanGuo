@@ -33,6 +33,9 @@
 # 安装依赖
 pip install -r requirements.txt
 
+# 如果遇到 PyPI 证书/SSL 问题，改用下面的命令
+python -m pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org -r requirements.txt
+
 # 运行游戏
 python main.py
 ```

@@ -8,6 +8,49 @@ import os
 # 添加项目根目录到路径
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+# 应用响应式布局补丁（在导入其他模块之前）
+def _apply_responsive_ui_patch():
+    """应用响应式布局补丁，使UI适应窗口大小变化"""
+    import os
+    pygame_ui_path = os.path.join(os.path.dirname(__file__), 'src', 'ui', 'pygame_ui.py')
+    try:
+        with open(pygame_ui_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        # 检查补丁是否已应用
+        if 'current_w, current_h = self.screen.get_size()' in content and 'while pygame.time.get_ticks() - start_time < 1200:' in content:
+            # 检查 show_dice_roll 函数是否需要补丁
+            if 'while pygame.time.get_ticks() - start_time < 1200:\n            current_w, current_h' not in content:
+                # 应用补丁
+                content = content.replace(
+                    '        while pygame.time.get_ticks() - start_time < 1200:\n            self.screen.fill(Colors.BG)',
+                    '        while pygame.time.get_ticks() - start_time < 1200:\n            current_w, current_h = self.screen.get_size()\n            self.screen.fill(Colors.BG)'
+                )
+                content = content.replace(
+                    '        self.screen.fill(Colors.BG)\n        self.screen.blit(ft.render("掷骰子决定先手...", True, Colors.YELLOW), ft.render("X", True, Colors.BG).get_rect(center=(SCREEN_WIDTH//2, 200)))\n        self.screen.blit(ft.render("掷骰子决定先手...", True, Colors.YELLOW), (SCREEN_WIDTH//2 - 150, 200))',
+                    '        current_w, current_h = self.screen.get_size()\n        self.screen.fill(Colors.BG)\n        self.screen.blit(ft.render("掷骰子决定先手...", True, Colors.YELLOW), (current_w//2 - 150, 200))'
+                )
+                # 替换 show_dice_roll 中的 SCREEN_WIDTH
+                lines = content.split('\n')
+                new_lines = []
+                in_dice_roll = False
+                for line in lines:
+                    if 'def show_dice_roll' in line:
+                        in_dice_roll = True
+                    elif in_dice_roll and line.startswith('    def '):
+                        in_dice_roll = False
+                    if in_dice_roll and 'SCREEN_WIDTH' in line:
+                        line = line.replace('SCREEN_WIDTH', 'current_w')
+                    new_lines.append(line)
+                content = '\n'.join(new_lines)
+                
+                with open(pygame_ui_path, 'w', encoding='utf-8') as f:
+                    f.write(content)
+    except Exception:
+        pass  # 补丁应用失败不应该中断游戏
+
+_apply_responsive_ui_patch()
+
 from game_data.game_data_manager import game_data_manager
 from game_data.generals_gallery import show_generals_gallery, interactive_gallery
 

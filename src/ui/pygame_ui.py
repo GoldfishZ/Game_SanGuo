@@ -220,39 +220,97 @@ class PygameUI:
 
     def _init_display(self):
         pygame.init()
-        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+        self.screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
         pygame.display.set_caption("三国武将卡牌游戏")
         self.clock = pygame.time.Clock()
 
     # —— 主菜单 ——
 
     def show_main_menu(self) -> str:
+        menu_frame = 0
         while True:
-            self.screen.fill(Colors.BG)
-            font_title = get_font( 72)
+            menu_frame += 1
+            current_w, current_h = self.screen.get_size()
+            
+            # 绘制渐变背景
+            for y in range(current_h):
+                ratio = y / current_h
+                r = int(30 + ratio * 20)
+                g = int(30 + ratio * 15)
+                b = int(40 + ratio * 30)
+                pygame.draw.line(self.screen, (r, g, b), (0, y), (current_w, y))
+            
+            # 绘制装饰边框
+            pygame.draw.line(self.screen, (255, 220, 50), (0, 0), (current_w, 0), 3)
+            pygame.draw.line(self.screen, (255, 220, 50), (0, current_h - 1), (current_w, current_h - 1), 3)
+            pygame.draw.line(self.screen, (100, 150, 200), (0, 80), (current_w, 80), 2)
+            
+            # 绘制装饰图案（左右边框）
+            for i in range(5):
+                pygame.draw.circle(self.screen, (255, 150, 50), (30, 120 + i * 120), 8)
+                pygame.draw.circle(self.screen, (255, 150, 50), (current_w - 30, 120 + i * 120), 8)
+            
+            # 标题
+            font_title = get_font(80)
             title = font_title.render("三国武将卡牌游戏", True, Colors.YELLOW)
-            self.screen.blit(title, title.get_rect(center=(SCREEN_WIDTH // 2, 180)))
-            font_sub = get_font( 30)
-            sub = font_sub.render("霸·三国志大战 卡牌对战", True, Colors.TEXT_SECONDARY)
-            self.screen.blit(sub, sub.get_rect(center=(SCREEN_WIDTH // 2, 240)))
-
+            title_rect = title.get_rect(center=(current_w // 2, 120))
+            # 标题阴影效果
+            shadow = font_title.render("三国武将卡牌游戏", True, (50, 50, 50))
+            self.screen.blit(shadow, (title_rect.x + 3, title_rect.y + 3))
+            self.screen.blit(title, title_rect)
+            
+            # 副标题
+            font_sub = get_font(32)
+            sub = font_sub.render("霸·三国志大战 卡牌对战", True, (200, 220, 255))
+            self.screen.blit(sub, sub.get_rect(center=(current_w // 2, 200)))
+            
+            # 装饰分割线
+            pygame.draw.line(self.screen, (100, 150, 200), (current_w // 2 - 150, 240), (current_w // 2 + 150, 240), 2)
+            
+            # 按钮
             mx, my = pygame.mouse.get_pos()
-            btn_start = render_button(self.screen, SCREEN_WIDTH // 2 - 100, 350, 200, 55, "开 始 游 戏",
-                                       True, hover=pygame.Rect(SCREEN_WIDTH//2-100, 350, 200, 55).collidepoint(mx, my))
-            btn_quit = render_button(self.screen, SCREEN_WIDTH // 2 - 100, 440, 200, 55, "退 出",
-                                      True, hover=pygame.Rect(SCREEN_WIDTH//2-100, 440, 200, 55).collidepoint(mx, my))
-
-            font_ver = get_font( 20)
-            ver = font_ver.render("v0.1 — 15位武将 | 6种主动技能 | 7种被动", True, Colors.GRAY)
-            self.screen.blit(ver, ver.get_rect(center=(SCREEN_WIDTH // 2, 700)))
+            btn_start_rect = pygame.Rect(current_w // 2 - 120, 310, 240, 70)
+            btn_quit_rect = pygame.Rect(current_w // 2 - 120, 410, 240, 70)
+            
+            # 绘制按钮with渐变和发光效果
+            for btn_rect, text, is_start in [(btn_start_rect, "开 始 游 戏", True), 
+                                              (btn_quit_rect, "退 出", False)]:
+                is_hover = btn_rect.collidepoint(mx, my)
+                
+                # 按钮背景
+                if is_hover:
+                    color = (120, 180, 255)
+                    glow_color = (150, 200, 255)
+                    pygame.draw.rect(self.screen, glow_color, btn_rect.inflate(8, 8), border_radius=15)
+                else:
+                    color = (70, 130, 200)
+                
+                pygame.draw.rect(self.screen, color, btn_rect, border_radius=12)
+                pygame.draw.rect(self.screen, (255, 220, 50) if is_hover else (100, 150, 200), btn_rect, 3, border_radius=12)
+                
+                # 按钮文字
+                font_btn = get_font(36)
+                btn_text = font_btn.render(text, True, Colors.WHITE)
+                self.screen.blit(btn_text, btn_text.get_rect(center=btn_rect.center))
+            
+            # 底部信息
+            font_info = get_font(14)
+            info_lines = [
+                "15位三国武将 | 6种主动技能 | 7种被动属性",
+                "回合制策略对战 | 排兵布阵 | 技能消耗士气"
+            ]
+            for idx, line in enumerate(info_lines):
+                info_text = font_info.render(line, True, Colors.TEXT_SECONDARY)
+                self.screen.blit(info_text, info_text.get_rect(center=(current_w // 2, current_h - 70 + idx * 25)))
+            
             pygame.display.flip()
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     return "quit"
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if btn_start.collidepoint(event.pos): return "start"
-                    if btn_quit.collidepoint(event.pos): return "quit"
+                    if btn_start_rect.collidepoint(event.pos): return "start"
+                    if btn_quit_rect.collidepoint(event.pos): return "quit"
                 if event.type == pygame.KEYDOWN:
                     if event.key in (pygame.K_RETURN, pygame.K_SPACE): return "start"
                     if event.key == pygame.K_ESCAPE: return "quit"
@@ -265,19 +323,22 @@ class PygameUI:
         pool = list(general_pool)
         cards_per_row = 5
         card_w, card_h = 200, 280
-        start_x = (SCREEN_WIDTH - cards_per_row * (card_w + 16)) // 2
-        start_y, gap = 60, 16
+        gap = 16
         scroll_offset = 0
-        rows = (len(pool) + cards_per_row - 1) // cards_per_row
         image_cache = {}
 
         while True:
+            current_w, current_h = self.screen.get_size()
+            start_x = (current_w - cards_per_row * (card_w + gap)) // 2
+            start_y = 60
+            rows = (len(pool) + cards_per_row - 1) // cards_per_row
+            
             self.screen.fill(Colors.BG)
-            title_font = get_font( 36)
+            title_font = get_font(36)
             title = title_font.render(
                 f"{player_name} — 选择武将 (已选 {len(selected)} 人)", True, Colors.YELLOW)
             self.screen.blit(title, (30, 12))
-            hint = get_font( 18)
+            hint = get_font(18)
             self.screen.blit(hint.render("点击卡牌选择/取消，选完后点击「完成」", True, Colors.TEXT_SECONDARY), (30, 45))
 
             mx, my = pygame.mouse.get_pos()
@@ -287,7 +348,7 @@ class PygameUI:
                 row, col = i // cards_per_row, i % cards_per_row
                 cx = start_x + col * (card_w + gap)
                 cy = start_y + row * (card_h + gap) + scroll_offset
-                if cy + card_h < 50 or cy > SCREEN_HEIGHT - 100:
+                if cy + card_h < 50 or cy > current_h - 100:
                     card_rects.append(None)
                     continue
                 is_selected = general.general_id in selected
@@ -331,14 +392,14 @@ class PygameUI:
                     self.screen.blit(fn.render(f"✓ 第{idx}选", True, Colors.GREEN), (cx + 8, cy + 235))
 
             if selected:
-                pf = get_font( 22)
-                self.screen.blit(pf.render("已选: " + "  ".join(g.name for g in selected.values()), True, Colors.YELLOW), (30, SCREEN_HEIGHT - 90))
+                pf = get_font(22)
+                self.screen.blit(pf.render("已选: " + "  ".join(g.name for g in selected.values()), True, Colors.YELLOW), (30, current_h - 90))
 
-            btn_done = render_button(self.screen, SCREEN_WIDTH // 2 - 80, SCREEN_HEIGHT - 50, 160, 42,
+            btn_done = render_button(self.screen, current_w // 2 - 80, current_h - 50, 160, 42,
                                       f"完成选择 ({len(selected)}人)", len(selected) > 0,
-                                      hover=pygame.Rect(SCREEN_WIDTH//2-80, SCREEN_HEIGHT-50, 160, 42).collidepoint(mx, my))
+                                      hover=pygame.Rect(current_w//2-80, current_h-50, 160, 42).collidepoint(mx, my))
             if rows > 2:
-                self.screen.blit(hint.render("滚轮上下翻页", True, Colors.GRAY), (SCREEN_WIDTH - 120, 12))
+                self.screen.blit(hint.render("滚轮上下翻页", True, Colors.GRAY), (current_w - 120, 12))
             pygame.display.flip()
 
             for event in pygame.event.get():
@@ -357,7 +418,7 @@ class PygameUI:
                             break
                 if event.type == pygame.MOUSEWHEEL:
                     scroll_offset += event.y * 40
-                    min_scroll = min(0, -(rows * (card_h + gap) - (SCREEN_HEIGHT - 200)))
+                    min_scroll = min(0, -(rows * (card_h + gap) - (current_h - 200)))
                     scroll_offset = max(min_scroll, min(0, scroll_offset))
             self.clock.tick(FPS)
 
@@ -366,19 +427,24 @@ class PygameUI:
     def show_formation_setup(self, team, generals: list, player_name: str) -> bool:
         selected_general = None
         placed = set()
-        grid_start_x, grid_start_y = 480, 100
         g_cell_w, g_cell_h, g_gap = 100, 130, 6
-        list_start_x, list_start_y = 30, 100
         card_w, card_h = 400, 70
 
         while True:
+            current_w, current_h = self.screen.get_size()
+            # 动态计算位置：左边武将列表，右边阵型
+            list_start_x = 30
+            list_start_y = 100
+            grid_start_x = list_start_x + card_w + 40
+            grid_start_y = 100
+            
             self.screen.fill(Colors.BG)
-            ft = get_font( 32)
+            ft = get_font(32)
             self.screen.blit(ft.render(f"{player_name} — 布置阵型", True, Colors.YELLOW), (30, 15))
-            self.screen.blit(get_font( 18).render("先点左边武将选中，再点右边格子放置。右键/空格取消选中。", True, Colors.TEXT_SECONDARY), (30, 50))
+            self.screen.blit(get_font(18).render("先点左边武将选中，再点右边格子放置。右键/空格取消选中。", True, Colors.TEXT_SECONDARY), (30, 50))
 
             mx, my = pygame.mouse.get_pos()
-            fc = get_font( 24); fs = get_font( 18)
+            fc = get_font(24); fs = get_font(18)
             self.screen.blit(fc.render("未放置的武将（点击选中）", True, Colors.TEXT_PRIMARY), (list_start_x, list_start_y - 30))
 
             unplaced = [g for g in generals if g.general_id not in placed]
@@ -420,11 +486,11 @@ class PygameUI:
                         if is_hover:
                             self.screen.blit(fs.render("+", True, Colors.YELLOW), (cx + g_cell_w//2 - 6, cy + g_cell_h//2 - 8))
 
-            btn_done = render_button(self.screen, grid_start_x + 250, SCREEN_HEIGHT - 55, 160, 40,
+            btn_done = render_button(self.screen, grid_start_x + 250, current_h - 55, 160, 40,
                                       f"完成布置 ({len(placed)}/{len(generals)})", len(placed) == len(generals),
-                                      hover=pygame.Rect(grid_start_x+250, SCREEN_HEIGHT-55, 160, 40).collidepoint(mx, my))
+                                      hover=pygame.Rect(grid_start_x+250, current_h-55, 160, 40).collidepoint(mx, my))
             if selected_general:
-                self.screen.blit(fc.render(f"已选中: {selected_general.name} → 点击右侧格子放置", True, Colors.GREEN), (30, SCREEN_HEIGHT - 40))
+                self.screen.blit(fc.render(f"已选中: {selected_general.name} → 点击右侧格子放置", True, Colors.GREEN), (30, current_h - 40))
             pygame.display.flip()
 
             for event in pygame.event.get():
@@ -461,25 +527,26 @@ class PygameUI:
         ft = get_font( 48); fd = get_font( 80); fn = get_font( 30)
         start_time = pygame.time.get_ticks()
         while pygame.time.get_ticks() - start_time < 1200:
+            current_w, current_h = self.screen.get_size()
             self.screen.fill(Colors.BG)
             t = ft.render("掷骰子决定先手...", True, Colors.YELLOW)
-            self.screen.blit(t, t.get_rect(center=(SCREEN_WIDTH // 2, 200)))
+            self.screen.blit(t, t.get_rect(center=(current_w // 2, 200)))
             ad1, ad2 = rnd.randint(1, 6), rnd.randint(1, 6)
-            self.screen.blit(fd.render(str(ad1), True, Colors.RED), (SCREEN_WIDTH // 2 - 160, 320))
-            self.screen.blit(fd.render(str(ad2), True, Colors.BLUE), (SCREEN_WIDTH // 2 + 60, 320))
-            self.screen.blit(fn.render(p1_name, True, Colors.RED), (SCREEN_WIDTH // 2 - 130, 430))
-            self.screen.blit(fn.render(p2_name, True, Colors.BLUE), (SCREEN_WIDTH // 2 + 70, 430))
+            self.screen.blit(fd.render(str(ad1), True, Colors.RED), (current_w // 2 - 160, 320))
+            self.screen.blit(fd.render(str(ad2), True, Colors.BLUE), (current_w // 2 + 60, 320))
+            self.screen.blit(fn.render(p1_name, True, Colors.RED), (current_w // 2 - 130, 430))
+            self.screen.blit(fn.render(p2_name, True, Colors.BLUE), (current_w // 2 + 70, 430))
             pygame.display.flip(); self.clock.tick(20)
 
+        current_w, current_h = self.screen.get_size()
         self.screen.fill(Colors.BG)
-        self.screen.blit(ft.render("掷骰子决定先手...", True, Colors.YELLOW), ft.render("X", True, Colors.BG).get_rect(center=(SCREEN_WIDTH//2, 200)))
-        self.screen.blit(ft.render("掷骰子决定先手...", True, Colors.YELLOW), (SCREEN_WIDTH//2 - 150, 200))
-        self.screen.blit(fd.render(str(dice1), True, Colors.RED), (SCREEN_WIDTH // 2 - 160, 320))
-        self.screen.blit(fd.render(str(dice2), True, Colors.BLUE), (SCREEN_WIDTH // 2 + 60, 320))
-        self.screen.blit(fn.render(p1_name, True, Colors.RED), (SCREEN_WIDTH // 2 - 130, 430))
-        self.screen.blit(fn.render(p2_name, True, Colors.BLUE), (SCREEN_WIDTH // 2 + 70, 430))
-        self.screen.blit(ft.render(f"{first_player_name} 获得先手！", True, Colors.GREEN), (SCREEN_WIDTH//2 - 200, 520))
-        self.screen.blit(fn.render("点击继续...", True, Colors.GRAY), (SCREEN_WIDTH//2 - 70, 600))
+        self.screen.blit(ft.render("掷骰子决定先手...", True, Colors.YELLOW), (current_w//2 - 150, 200))
+        self.screen.blit(fd.render(str(dice1), True, Colors.RED), (current_w // 2 - 160, 320))
+        self.screen.blit(fd.render(str(dice2), True, Colors.BLUE), (current_w // 2 + 60, 320))
+        self.screen.blit(fn.render(p1_name, True, Colors.RED), (current_w // 2 - 130, 430))
+        self.screen.blit(fn.render(p2_name, True, Colors.BLUE), (current_w // 2 + 70, 430))
+        self.screen.blit(ft.render(f"{first_player_name} 获得先手！", True, Colors.GREEN), (current_w//2 - 200, 520))
+        self.screen.blit(fn.render("点击继续...", True, Colors.GRAY), (current_w//2 - 70, 600))
         pygame.display.flip()
         while True:
             for event in pygame.event.get():
@@ -490,11 +557,12 @@ class PygameUI:
     def show_game_over(self, winner_name: str, turn_count: int) -> None:
         waiting = True
         while waiting:
+            current_w, current_h = self.screen.get_size()
             self.screen.fill(Colors.BG)
-            self.screen.blit(get_font( 60).render("战斗结束", True, Colors.YELLOW), (SCREEN_WIDTH//2 - 120, 250))
-            self.screen.blit(get_font( 42).render(f"胜利方：{winner_name}", True, Colors.GREEN), (SCREEN_WIDTH//2 - 130, 340))
-            self.screen.blit(get_font( 30).render(f"总回合数：{turn_count}", True, Colors.TEXT_SECONDARY), (SCREEN_WIDTH//2 - 90, 400))
-            self.screen.blit(get_font( 30).render("点击任意处退出", True, Colors.GRAY), (SCREEN_WIDTH//2 - 110, 500))
+            self.screen.blit(get_font(60).render("战斗结束", True, Colors.YELLOW), (current_w//2 - 120, 250))
+            self.screen.blit(get_font(42).render(f"胜利方：{winner_name}", True, Colors.GREEN), (current_w//2 - 130, 340))
+            self.screen.blit(get_font(30).render(f"总回合数：{turn_count}", True, Colors.TEXT_SECONDARY), (current_w//2 - 90, 400))
+            self.screen.blit(get_font(30).render("点击任意处退出", True, Colors.GRAY), (current_w//2 - 110, 500))
             pygame.display.flip()
             for event in pygame.event.get():
                 if event.type in (pygame.QUIT, pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
