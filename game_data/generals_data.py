@@ -13,6 +13,7 @@
   attributes  属性列表: 勇猛/魅力/募兵/防栅/连环/复活/伏兵 (空列表=无属性)
   skill_id    主动技能ID (skills_config.py 中定义)
   image_file  武将卡图片文件名 (存放在 assets/images/generals/)
+  biography   武将生平简介（展示页面用）
 """
 
 GENERALS_DATA = [
@@ -28,6 +29,7 @@ GENERALS_DATA = [
         "attributes": ["魅力"],
         "skill_id": "rally",
         "image_file": "liu_bei.png",
+        "biography": "字玄德，蜀汉开国皇帝。以仁德著称，与关羽、张飞桃园结义，三顾茅庐请诸葛亮出山，建立蜀汉政权。",
     },
     {
         "id": 2002,
@@ -40,6 +42,7 @@ GENERALS_DATA = [
         "attributes": ["勇猛"],
         "skill_id": "fierce_attack",
         "image_file": "guan_yu.png",
+        "biography": "字云长，蜀汉五虎上将之首。温酒斩华雄，过五关斩六将，水淹七军威震华夏。以忠义闻名，被尊为武圣。",
     },
     {
         "id": 2003,
@@ -52,6 +55,7 @@ GENERALS_DATA = [
         "attributes": ["勇猛"],
         "skill_id": "fierce_attack",
         "image_file": "zhang_fei.png",
+        "biography": "字翼德，蜀汉五虎上将。长坂坡一声断喝退曹军，勇猛无双。与刘备、关羽桃园结义，情深义重。",
     },
     {
         "id": 2004,
@@ -64,6 +68,7 @@ GENERALS_DATA = [
         "attributes": ["伏兵"],
         "skill_id": "strength_tactics",
         "image_file": "zhao_yun.png",
+        "biography": "字子龙，蜀汉五虎上将。长坂坡单骑救阿斗，一身是胆。征战一生未尝败绩，被誉为常胜将军。",
     },
     {
         "id": 2005,
@@ -76,6 +81,7 @@ GENERALS_DATA = [
         "attributes": ["连环"],
         "skill_id": "fire_attack",
         "image_file": "zhuge_liang.png",
+        "biography": "字孔明，号卧龙，蜀汉丞相。隆中对定三分天下，出师表千古流传。用兵如神，发明木牛流马、诸葛连弩。",
     },
 
     # ==================== 魏 ====================
@@ -90,6 +96,7 @@ GENERALS_DATA = [
         "attributes": ["魅力"],
         "skill_id": "rally",
         "image_file": "cao_cao.png",
+        "biography": "字孟德，曹魏政权的奠基人。挟天子以令诸侯，统一北方。文武兼备，著有《短歌行》，兵法谋略冠绝当世。",
     },
     {
         "id": 3002,
@@ -102,6 +109,7 @@ GENERALS_DATA = [
         "attributes": ["勇猛"],
         "skill_id": "strength_tactics",
         "image_file": "xiahou_dun.png",
+        "biography": "字元让，曹魏大将。拔矢啖睛，悍勇无匹。为曹操族弟，深得信任，官至大将军。",
     },
     {
         "id": 3003,
@@ -114,6 +122,7 @@ GENERALS_DATA = [
         "attributes": ["募兵"],
         "skill_id": "fierce_attack",
         "image_file": "zhang_liao.png",
+        "biography": "字文远，曹魏五子良将之首。合肥之战以八百破十万，威震逍遥津，江东小儿闻其名不敢夜啼。",
     },
     {
         "id": 3004,
@@ -126,6 +135,7 @@ GENERALS_DATA = [
         "attributes": ["伏兵"],
         "skill_id": "intimidate",
         "image_file": "sima_yi.png",
+        "biography": "字仲达，曹魏重臣。善用兵，多次抵御诸葛亮北伐。深谋远虑，隐忍多年，终为司马氏篡魏奠基。",
     },
 
     # ==================== 吴 ====================
@@ -140,6 +150,7 @@ GENERALS_DATA = [
         "attributes": ["复活"],
         "skill_id": "strength_tactics",
         "image_file": "sun_jian.png",
+        "biography": "字文台，东吴奠基人。勇猛刚毅，讨伐董卓时率先攻入洛阳。获传国玉玺，为孙吴霸业之始。",
     },
     {
         "id": 4002,
@@ -152,6 +163,7 @@ GENERALS_DATA = [
         "attributes": ["连环"],
         "skill_id": "fire_attack",
         "image_file": "zhou_yu.png",
+        "biography": "字公瑾，东吴大都督。赤壁之战火烧曹营，谈笑间樯橹灰飞烟灭。精通音律，曲有误周郎顾。",
     },
     {
         "id": 4003,
@@ -164,6 +176,7 @@ GENERALS_DATA = [
         "attributes": ["募兵"],
         "skill_id": "fierce_attack",
         "image_file": "gan_ning.png",
+        "biography": "字兴霸，东吴虎将。原为锦帆贼，后投孙权。百骑劫曹营，勇冠三军，孙权赞曰「孟德有张辽，孤有甘兴霸」。",
     },
 
     # ==================== 他 ====================
@@ -178,6 +191,7 @@ GENERALS_DATA = [
         "attributes": ["伏兵"],
         "skill_id": "strength_tactics",
         "image_file": "zhang_ren.png",
+        "biography": "益州名将，刘璋部将。以伏兵战术闻名，落凤坡设伏射杀庞统。被俘后宁死不降，以忠烈著称。",
     },
     {
         "id": 5001,
@@ -190,6 +204,7 @@ GENERALS_DATA = [
         "attributes": ["勇猛"],
         "skill_id": "fierce_attack",
         "image_file": "lv_bu.png",
+        "biography": "字奉先，三国第一猛将。人中吕布，马中赤兔。辕门射戟显神威，虎牢关前战三英。性情无常，终为曹操所擒杀。",
     },
     {
         "id": 1003,
@@ -202,5 +217,6 @@ GENERALS_DATA = [
         "attributes": ["防栅"],
         "skill_id": "alliance_pact",
         "image_file": "lu_su.png",
+        "biography": "字子敬，东吴谋主。主张联刘抗曹，促成赤壁之战孙刘联盟。为人忠厚，见识卓越，继周瑜后都督江东军事。",
     },
 ]

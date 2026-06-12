@@ -129,11 +129,18 @@ def start_game_gui():
 
         pygame_ui = PygameUI()
 
-        # 主菜单
-        choice = pygame_ui.show_main_menu()
-        if choice != "start":
-            pygame.quit()
-            return True  # 正常退出不算失败
+        # 主菜单循环
+        while True:
+            choice = pygame_ui.show_main_menu()
+            if choice == "quit":
+                pygame.quit()
+                return True
+            elif choice == "rules":
+                pygame_ui.show_rules()
+            elif choice == "gallery":
+                pygame_ui.show_general_gallery()
+            elif choice == "start":
+                break  # 进入游戏流程
 
         game_flow = GameFlowController()
         game_flow._generate_general_pool()

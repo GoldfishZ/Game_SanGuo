@@ -57,6 +57,25 @@ FPS = 30
 FORMATION_COLS = 4
 FORMATION_ROWS = 3
 
+# ==================== 背景图片 ====================
+
+_BG_CACHE = {}
+
+def _load_bg(name: str, w: int, h: int):
+    """加载背景图片，失败返回 None"""
+    key = f"{name}:{w}x{h}"
+    if key in _BG_CACHE:
+        return _BG_CACHE[key]
+    import os as _os
+    d = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))), "assets", "images", "backgrounds")
+    p = _os.path.join(d, name)
+    surf = None
+    if _os.path.exists(p):
+        try: surf = pygame.transform.smoothscale(pygame.image.load(p).convert(), (w, h))
+        except: pass
+    _BG_CACHE[key] = surf
+    return surf
+
 # ==================== 中文字体 ====================
 
 _CJK_FONT_NAME = None
@@ -227,93 +246,58 @@ class PygameUI:
     # —— 主菜单 ——
 
     def show_main_menu(self) -> str:
-        menu_frame = 0
         while True:
-            menu_frame += 1
             current_w, current_h = self.screen.get_size()
-            
-            # 绘制渐变背景
-            for y in range(current_h):
-                ratio = y / current_h
-                r = int(30 + ratio * 20)
-                g = int(30 + ratio * 15)
-                b = int(40 + ratio * 30)
-                pygame.draw.line(self.screen, (r, g, b), (0, y), (current_w, y))
-            
-            # 绘制装饰边框
-            pygame.draw.line(self.screen, (255, 220, 50), (0, 0), (current_w, 0), 3)
-            pygame.draw.line(self.screen, (255, 220, 50), (0, current_h - 1), (current_w, current_h - 1), 3)
-            pygame.draw.line(self.screen, (100, 150, 200), (0, 80), (current_w, 80), 2)
-            
-            # 绘制装饰图案（左右边框）
-            for i in range(5):
-                pygame.draw.circle(self.screen, (255, 150, 50), (30, 120 + i * 120), 8)
-                pygame.draw.circle(self.screen, (255, 150, 50), (current_w - 30, 120 + i * 120), 8)
-            
+            # 背景
+            bg = _load_bg("starting_menu.png", current_w, current_h)
+            if bg: self.screen.blit(bg, (0, 0))
+            else: self.screen.fill(Colors.BG)
+
             # 标题
-            font_title = get_font(80)
-            title = font_title.render("三国武将卡牌游戏", True, Colors.YELLOW)
-            title_rect = title.get_rect(center=(current_w // 2, 120))
-            # 标题阴影效果
-            shadow = font_title.render("三国武将卡牌游戏", True, (50, 50, 50))
-            self.screen.blit(shadow, (title_rect.x + 3, title_rect.y + 3))
-            self.screen.blit(title, title_rect)
-            
-            # 副标题
-            font_sub = get_font(32)
-            sub = font_sub.render("霸·三国志大战 卡牌对战", True, (200, 220, 255))
-            self.screen.blit(sub, sub.get_rect(center=(current_w // 2, 200)))
-            
-            # 装饰分割线
-            pygame.draw.line(self.screen, (100, 150, 200), (current_w // 2 - 150, 240), (current_w // 2 + 150, 240), 2)
-            
-            # 按钮
+            ft = get_font(80)
+            t = ft.render("三国武将卡牌游戏", True, Colors.YELLOW)
+            self.screen.blit(t, t.get_rect(center=(current_w // 2, 100)))
+            fs = get_font(28)
+            s = fs.render("霸·三国志大战 卡牌对战", True, (200, 220, 255))
+            self.screen.blit(s, s.get_rect(center=(current_w // 2, 170)))
+
+            # 木质按钮
             mx, my = pygame.mouse.get_pos()
-            btn_start_rect = pygame.Rect(current_w // 2 - 120, 310, 240, 70)
-            btn_quit_rect = pygame.Rect(current_w // 2 - 120, 410, 240, 70)
-            
-            # 绘制按钮with渐变和发光效果
-            for btn_rect, text, is_start in [(btn_start_rect, "开 始 游 戏", True), 
-                                              (btn_quit_rect, "退 出", False)]:
-                is_hover = btn_rect.collidepoint(mx, my)
-                
-                # 按钮背景
-                if is_hover:
-                    color = (120, 180, 255)
-                    glow_color = (150, 200, 255)
-                    pygame.draw.rect(self.screen, glow_color, btn_rect.inflate(8, 8), border_radius=15)
-                else:
-                    color = (70, 130, 200)
-                
-                pygame.draw.rect(self.screen, color, btn_rect, border_radius=12)
-                pygame.draw.rect(self.screen, (255, 220, 50) if is_hover else (100, 150, 200), btn_rect, 3, border_radius=12)
-                
-                # 按钮文字
-                font_btn = get_font(36)
-                btn_text = font_btn.render(text, True, Colors.WHITE)
-                self.screen.blit(btn_text, btn_text.get_rect(center=btn_rect.center))
-            
-            # 底部信息
-            font_info = get_font(14)
-            info_lines = [
-                "15位三国武将 | 6种主动技能 | 7种被动属性",
-                "回合制策略对战 | 排兵布阵 | 技能消耗士气"
+            bw, bh = 260, 50
+            bx = current_w // 2 - bw // 2
+            btns = [
+                (pygame.Rect(bx, 260, bw, bh), "开 始 游 戏", "start"),
+                (pygame.Rect(bx, 322, bw, bh), "规 则 介 绍", "rules"),
+                (pygame.Rect(bx, 384, bw, bh), "武 将 展 示", "gallery"),
+                (pygame.Rect(bx, 446, bw, bh), "退    出", "quit"),
             ]
-            for idx, line in enumerate(info_lines):
-                info_text = font_info.render(line, True, Colors.TEXT_SECONDARY)
-                self.screen.blit(info_text, info_text.get_rect(center=(current_w // 2, current_h - 70 + idx * 25)))
-            
+            for r, text, _act in btns:
+                hov = r.collidepoint(mx, my)
+                wood = (210, 170, 110) if hov else (170, 130, 80)
+                gold = (255, 210, 80) if hov else (180, 140, 40)
+                pygame.draw.rect(self.screen, (100, 70, 35), r.inflate(10, 8), border_radius=8)
+                pygame.draw.rect(self.screen, wood, r, border_radius=6)
+                pygame.draw.rect(self.screen, gold, r, 2, border_radius=6)
+                pygame.draw.rect(self.screen, (70, 45, 20), r.inflate(-10, -6), 1, border_radius=4)
+                for dx, dy in [(-6, -6), (bw - 2, -6), (-6, bh - 2), (bw - 2, bh - 2)]:
+                    pygame.draw.circle(self.screen, gold, (r.x + dx, r.y + dy), 3)
+                tb = get_font(28).render(text, True, (40, 20, 5))
+                self.screen.blit(tb, tb.get_rect(center=r.center))
+
+            # 底部
+            fi = get_font(16)
+            for i, ln in enumerate(["15位武将 | 6种技能 | 7种被动", "回合策略对战 | 排兵布阵"]):
+                self.screen.blit(fi.render(ln, True, Colors.TEXT_SECONDARY), (current_w//2 - 120, current_h - 60 + i * 22))
             pygame.display.flip()
 
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    return "quit"
-                if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if btn_start_rect.collidepoint(event.pos): return "start"
-                    if btn_quit_rect.collidepoint(event.pos): return "quit"
-                if event.type == pygame.KEYDOWN:
-                    if event.key in (pygame.K_RETURN, pygame.K_SPACE): return "start"
-                    if event.key == pygame.K_ESCAPE: return "quit"
+            for e in pygame.event.get():
+                if e.type == pygame.QUIT: return "quit"
+                if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+                    for r, _, act in btns:
+                        if r.collidepoint(e.pos): return act
+                if e.type == pygame.KEYDOWN:
+                    if e.key == pygame.K_RETURN: return "start"
+                    if e.key == pygame.K_ESCAPE: return "quit"
             self.clock.tick(FPS)
 
     # —— 选将 ——
@@ -569,8 +553,196 @@ class PygameUI:
                     waiting = False
             self.clock.tick(FPS)
 
+    # —— 规则介绍（竹简） ——
 
-# ==================== 战斗 Callbacks（重写版） ====================
+    def _draw_bamboo(self, s, x, y, w, h):
+        """竹简底板"""
+        pygame.draw.rect(s, (160, 130, 90), (x, y, w, h), border_radius=8)
+        sw = 26
+        for sx in range(x + 4, x + w - sw, sw + 5):
+            pygame.draw.rect(s, (210, 190, 145), (sx, y + 4, sw, h - 8), border_radius=3)
+            pygame.draw.rect(s, (150, 125, 85), (sx, y + 4, sw, h - 8), 1, border_radius=3)
+            for sy in range(y + 30, y + h - 4, 55):
+                pygame.draw.line(s, (140, 115, 75), (sx, sy), (sx + sw, sy), 1)
+        for by in [y + h//3, y + 2*h//3]:
+            pygame.draw.rect(s, (70, 45, 20), (x + 2, by - 3, w - 4, 6), border_radius=2)
+        pygame.draw.rect(s, (90, 65, 35), (x, y, w, h), 4, border_radius=8)
+
+    def show_rules(self) -> None:
+        rules = [
+            ("阵型", "3行×4列方格，前列武将挡住后列\n敌方只能攻击最前排的武将"),
+            ("伤害", "攻击方武力 >目标武力: 伤害=武力差\n攻击方武力≤目标武力: 伤害=min(3, (武力+智力)差)\n最低造成1点伤害"),
+            ("士气", "初始12点，队伍共用士气池\n使用主动技能消耗士气\n后手玩家士气上限+2作为补偿"),
+            ("先手", "双方抛1-6骰子，点数大方先手\nA-B-A-B交替回合制"),
+            ("回合", "每回合: ①技能使用阶段→②普攻阶段\n每阶段各选一名武将行动"),
+            ("被动技能", "勇猛: 低血量伤害×1.5 | 魅力: 死亡反弹伤害\n募兵: 每回合回复1点 | 防栅: 挡一次攻击\n连环: 分担伤害+共享效果 | 复活: 50%HP复活\n伏兵: 使用技能前不可被选中"),
+            ("胜利", "一方全体武将阵亡则游戏结束"),
+        ]
+        sy = 0
+        while True:
+            cw, ch = self.screen.get_size()
+            bg = _load_bg("rules_introduction.png", cw, ch)
+            if bg: self.screen.blit(bg, (0, 0))
+            else: self.screen.fill(Colors.BG)
+            # 竹简
+            sx, sw, sh = int(cw*0.12), int(cw*0.76), ch - 110
+            self._draw_bamboo(self.screen, sx, 60, sw, sh)
+            t = get_font(34).render("游 戏 规 则", True, (50, 30, 10))
+            self.screen.blit(t, t.get_rect(center=(cw//2, 38)))
+            # 文字裁剪
+            ta = pygame.Rect(sx+35, 75, sw-70, sh-50)
+            clip = self.screen.subsurface(ta).copy()
+            ms = max(0, len(rules)*170 - ta.height)
+            sy = max(0, min(sy, ms))
+            for i, (ti, de) in enumerate(rules):
+                ty = 5 + i*170 - sy
+                if ty + 140 < 0 or ty > ta.height: continue
+                ft2 = get_font(22)
+                clip.blit(ft2.render(f"【{ti}】", True, (50, 30, 10)), (12, ty))
+                for j, ln in enumerate(de.split('\n')):
+                    clip.blit(get_font(19).render(ln, True, (60, 40, 20)), (20, ty+28+j*22))
+            self.screen.blit(clip, (ta.x, ta.y))
+            self.screen.blit(get_font(17).render("滚轮浏览 | 左键返回", True, Colors.GRAY), (cw//2-60, ch-18))
+            pygame.display.flip()
+            for e in pygame.event.get():
+                if e.type == pygame.QUIT: pygame.quit(); sys.exit(0)
+                if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE: return
+                if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1: return
+                if e.type == pygame.MOUSEWHEEL: sy -= e.y*40
+            self.clock.tick(FPS)
+
+    # —— 武将展示 ——
+
+    def _card_img(self, data: dict, mw: int, mh: int):
+        """加载武将卡原图保持比例"""
+        f = data.get("image_file", "")
+        if not f: return None
+        try:
+            from src.utils.image_loader import get_image_loader
+            o = get_image_loader().get_general_image(f, size=None)
+            if o:
+                ow, oh = o.get_size(); s = min(mw/ow, mh/oh)
+                return pygame.transform.smoothscale(o, (int(ow*s), int(oh*s)))
+        except: pass
+        return None
+
+    def show_general_gallery(self) -> None:
+        from game_data.generals_data import GENERALS_DATA
+        all_g = list(GENERALS_DATA)
+        filters = {"camp": None, "attr": None}
+        camp_opts = ["全部", "蜀", "魏", "吴", "他"]
+        attr_opts = ["全部", "勇猛", "魅力", "募兵", "防栅", "连环", "复活", "伏兵"]
+        def _apply():
+            r = all_g[:]
+            if filters["camp"]: r = [g for g in r if g["camp"]==filters["camp"]]
+            if filters["attr"]: r = [g for g in r if filters["attr"] in g.get("attributes",[])]
+            return r
+        filtered = _apply()
+        idx = 0
+        while True:
+            cw, ch = self.screen.get_size()
+            bg = _load_bg("showing_general.png", cw, ch)
+            if bg: self.screen.blit(bg, (0, 0))
+            else: self.screen.fill(Colors.BG)
+            t = get_font(36).render(f"武将展示 ({idx+1}/{len(filtered)})" if filtered else "武将展示", True, Colors.YELLOW)
+            self.screen.blit(t, t.get_rect(center=(cw//2, 24)))
+
+            # 下拉筛选
+            fx, ddw = cw-155, 120
+            camp_exp = getattr(self, '_ce', False); attr_exp = getattr(self, '_ae', False)
+            mp = pygame.mouse.get_pos()
+            for is_attr, label, opts, exp, key in [
+                (False, "势力▾", camp_opts, camp_exp, "camp"),
+                (True,  "属性▾", attr_opts, attr_exp, "attr")]:
+                fy = 50 + (28 if is_attr else 0)
+                dr = pygame.Rect(fx, fy, ddw, 24)
+                hv = dr.collidepoint(mp)
+                pygame.draw.rect(self.screen, (180,150,100) if (hv or exp) else (130,100,60), dr, border_radius=4)
+                pygame.draw.rect(self.screen, (200,170,100), dr, 1, border_radius=4)
+                self.screen.blit(get_font(17).render(label, True, (40,20,5)), (fx+6, fy+2))
+                if exp:
+                    for oi, o in enumerate(opts):
+                        oy = fy + 26 + oi*22
+                        orr = pygame.Rect(fx, oy, ddw, 20)
+                        ohv = orr.collidepoint(mp)
+                        cur = filters[key]==o or (o=="全部" and filters[key] is None)
+                        pygame.draw.rect(self.screen, (200,170,120) if ohv else (150,120,80), orr, border_radius=3)
+                        if cur: pygame.draw.rect(self.screen, (255,200,80), orr, 2, border_radius=3)
+                        self.screen.blit(get_font(15).render(o, True, (40,20,5) if cur else (80,60,30)), (fx+6, oy+1))
+
+            if not filtered:
+                self.screen.blit(get_font(28).render("无符合条件的武将", True, Colors.GRAY), (cw//2-80, ch//2))
+                pygame.display.flip()
+                for e in pygame.event.get():
+                    if e.type == pygame.QUIT: pygame.quit(); sys.exit(0)
+                    if e.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN): return
+                self.clock.tick(FPS); continue
+
+            g = filtered[idx]
+            cw2, cy = 300, 110
+            cx = cw//2 - cw2//2
+            card_rect = pygame.Rect(cx, cy, cw2, 430)
+            camp_c = {"蜀":(80,200,80),"魏":(200,80,80),"吴":(80,80,220),"他":(200,120,210)}.get(g["camp"], Colors.YELLOW)
+            # 卡片
+            pygame.draw.rect(self.screen, Colors.PANEL_BG, card_rect, border_radius=12)
+            pygame.draw.rect(self.screen, camp_c, card_rect, 3, border_radius=12)
+            img = self._card_img(g, cw2-16, 430-16)
+            if img:
+                ix = cx+(cw2-img.get_width())//2; iy = cy+(430-img.get_height())//2
+                self.screen.blit(img, (ix, iy))
+            # 生平
+            bio = g.get("biography","")
+            if bio:
+                by = cy+440
+                lines = []; ln = ""
+                for c in bio:
+                    ln += c
+                    if len(ln) >= cw//27: lines.append(ln); ln = ""
+                if ln: lines.append(ln)
+                bh = len(lines)*26+28; bw2 = cw-180
+                br = pygame.Rect((cw-bw2)//2, by, bw2, bh)
+                bs = pygame.Surface((bw2, bh), pygame.SRCALPHA); bs.fill((20,15,5,200))
+                self.screen.blit(bs, (br.x, br.y))
+                pygame.draw.rect(self.screen, (160,120,60), br, 2, border_radius=6)
+                for li, line in enumerate(lines):
+                    ts = get_font(19).render(line, True, (220,200,160))
+                    self.screen.blit(ts, ts.get_rect(center=(cw//2, by+14+li*26)))
+            # 箭头
+            if idx>0:
+                self.screen.blit(get_font(42).render("◀",True,(150,150,150)), (cx-55, cy+200))
+            if idx<len(filtered)-1:
+                self.screen.blit(get_font(42).render("▶",True,(150,150,150)), (cx+cw2+20, cy+200))
+            self.screen.blit(get_font(16).render("滚轮/◀▶翻页 | 左键空白返回 | ESC返回", True, Colors.GRAY), (cw//2-140, ch-15))
+            pygame.display.flip()
+
+            for e in pygame.event.get():
+                if e.type == pygame.QUIT: pygame.quit(); sys.exit(0)
+                if e.type == pygame.KEYDOWN:
+                    if e.key == pygame.K_ESCAPE:
+                        if self._ce or self._ae: self._ce = False; self._ae = False
+                        else: return
+                    if e.key == pygame.K_LEFT and idx>0: idx-=1
+                    if e.key == pygame.K_RIGHT and idx<len(filtered)-1: idx+=1
+                if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+                    mx2, my2 = e.pos
+                    # 下拉
+                    drc = pygame.Rect(fx, 50, ddw, 24); dra = pygame.Rect(fx, 78, ddw, 24)
+                    if drc.collidepoint(mx2, my2): self._ce=not camp_exp; self._ae=False
+                    elif dra.collidepoint(mx2, my2): self._ae=not attr_exp; self._ae=False
+                    elif camp_exp:
+                        for oi, o in enumerate(camp_opts):
+                            if pygame.Rect(fx, 76, ddw, 20).collidepoint(mx2, my2):
+                                filters["camp"]=None if o=="全部" else o; self._ce=False; filtered=_apply(); idx=0; break
+                    elif attr_exp:
+                        for oi, o in enumerate(attr_opts):
+                            oy = 78+26+oi*22
+                            if pygame.Rect(fx, oy, ddw, 20).collidepoint(mx2, my2):
+                                filters["attr"]=None if o=="全部" else o; self._ae=False; filtered=_apply(); idx=0; break
+                    elif not card_rect.collidepoint(mx2, my2) and mx2<fx-10:
+                        self._ce=False; self._ae=False; return
+                if e.type == pygame.MOUSEWHEEL and filtered:
+                    idx = (idx - e.y) % len(filtered)
+            self.clock.tick(FPS)
 
 class PygameBattleCallbacks(BattleCallbacks):
 
