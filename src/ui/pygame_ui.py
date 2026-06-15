@@ -303,27 +303,42 @@ class PygameUI:
     # —— 选将 ——
 
     def show_general_selection(self, general_pool, player_name: str) -> list:
-        selected = {}
+        """选将：单击放大预览，双击选择，已选单击取消。只展示武将卡图片。"""
+        selected = {}  # general_id → General
         pool = list(general_pool)
         cards_per_row = 5
-        card_w, card_h = 200, 280
-        gap = 16
+        card_w, card_h = 180, 260
+        gap = 14
         scroll_offset = 0
         image_cache = {}
+        # 双击检测
+        last_click_time = 0
+        last_clicked_id = None
+        # 放大预览
+        preview_general = None
 
         while True:
             current_w, current_h = self.screen.get_size()
             start_x = (current_w - cards_per_row * (card_w + gap)) // 2
             start_y = 60
             rows = (len(pool) + cards_per_row - 1) // cards_per_row
-            
-            self.screen.fill(Colors.BG)
-            title_font = get_font(36)
-            title = title_font.render(
-                f"{player_name} — 选择武将 (已选 {len(selected)} 人)", True, Colors.YELLOW)
-            self.screen.blit(title, (30, 12))
-            hint = get_font(18)
-            self.screen.blit(hint.render("点击卡牌选择/取消，选完后点击「完成」", True, Colors.TEXT_SECONDARY), (30, 45))
+
+            # 背景
+            bg = _load_bg("choosing_general.png", current_w, current_h)
+            if bg:
+                self.screen.blit(bg, (0, 0))
+                blur = pygame.Surface((current_w, current_h), pygame.SRCALPHA)
+                blur.fill((0, 0, 0, 130))
+                self.screen.blit(blur, (0, 0))
+            else:
+                self.screen.fill(Colors.BG)
+
+            # 标题
+            ft = get_font(34)
+            t = ft.render(f"{player_name} — 选择武将 (已选 {len(selected)} 人)", True, Colors.YELLOW)
+            self.screen.blit(t, (30, 12))
+            fs_hint = get_font(16)
+            self.screen.blit(fs_hint.render("单击放大预览 | 双击选择 | 已选单击取消 | 滚轮翻页", True, Colors.TEXT_SECONDARY), (30, 46))
 
             mx, my = pygame.mouse.get_pos()
             card_rects = []
@@ -332,73 +347,155 @@ class PygameUI:
                 row, col = i // cards_per_row, i % cards_per_row
                 cx = start_x + col * (card_w + gap)
                 cy = start_y + row * (card_h + gap) + scroll_offset
-                if cy + card_h < 50 or cy > current_h - 100:
+                if cy + card_h < 50 or cy > current_h - 110:
                     card_rects.append(None)
                     continue
                 is_selected = general.general_id in selected
                 rect = pygame.Rect(cx, cy, card_w, card_h)
                 card_rects.append(rect)
-                bg = Colors.CARD_SELECTED if is_selected else (
-                    Colors.CARD_HOVER if rect.collidepoint(mx, my) else Colors.PANEL_BG)
-                pygame.draw.rect(self.screen, bg, rect, border_radius=8)
-                border_color = Colors.YELLOW if is_selected else Colors.GRAY
-                pygame.draw.rect(self.screen, border_color, rect, 3, border_radius=8)
 
+                # 卡面背景
+                bg_c = Colors.CARD_SELECTED if is_selected else (Colors.CARD_HOVER if rect.collidepoint(mx, my) else Colors.PANEL_BG)
+                pygame.draw.rect(self.screen, bg_c, rect, border_radius=8)
+                border_c = Colors.YELLOW if is_selected else Colors.GRAY
+                bw = 4 if is_selected else 2
+                pygame.draw.rect(self.screen, border_c, rect, bw, border_radius=8)
+
+                # 武将卡图片（填满卡片）
                 if general.image_file and general.image_file not in image_cache:
                     try:
                         from src.utils.image_loader import get_image_loader
-                        img = get_image_loader().get_general_image(general.image_file, size=(card_w - 8, 140))
-                        image_cache[general.image_file] = img
+                        o = get_image_loader().get_general_image(general.image_file, size=None)
+                        if o:
+                            ow, oh = o.get_size()
+                            s = min((card_w-6) / ow, (card_h-6) / oh)
+                            image_cache[general.image_file] = pygame.transform.smoothscale(o, (int(ow*s), int(oh*s)))
+                        else:
+                            image_cache[general.image_file] = None
                     except:
                         image_cache[general.image_file] = None
                 img = image_cache.get(general.image_file)
                 if img:
-                    self.screen.blit(img, (cx + 4, cy + 4))
+                    ix = cx + (card_w - img.get_width()) // 2
+                    iy = cy + (card_h - img.get_height()) // 2
+                    self.screen.blit(img, (ix, iy))
                 else:
-                    ph = pygame.Surface((card_w - 8, 140)); ph.fill((60, 60, 80))
-                    self.screen.blit(ph, (cx + 4, cy + 4))
+                    ph = pygame.Surface((card_w-6, card_h-6)); ph.fill((60, 60, 80))
+                    self.screen.blit(ph, (cx+3, cy+3))
 
-                name_bg = pygame.Surface((card_w - 8, 22), pygame.SRCALPHA); name_bg.fill((0, 0, 0, 150))
-                self.screen.blit(name_bg, (cx + 4, cy + 122))
-                fn = get_font( 18)
-                self.screen.blit(fn.render(general.name, True, Colors.WHITE), (cx + 10, cy + 124))
-                fs = get_font( 16)
-                self.screen.blit(fs.render(f"{general.camp.value} | {general.rarity.name}", True, Colors.TEXT_SECONDARY), (cx + 8, cy + 152))
-                self.screen.blit(fs.render(f"武{general.force} 智{general.intelligence} HP{general.max_hp}", True, Colors.TEXT_PRIMARY), (cx + 8, cy + 172))
-                if general.attribute:
-                    self.screen.blit(fs.render(f"属性: {' '.join(a.value for a in general.attribute)}", True, Colors.GREEN), (cx + 8, cy + 192))
-                sk = get_font( 14)
-                sk_name = general.active_skill.name if general.active_skill else "无"
-                self.screen.blit(sk.render(f"技能: {sk_name}", True, Colors.ORANGE), (cx + 8, cy + 210))
-                self.screen.blit(fs.render(f"费:{general.cost}", True, Colors.YELLOW), (cx + card_w - 40, cy + 6))
+                # 底部名字条
+                nb = pygame.Surface((card_w-6, 24), pygame.SRCALPHA); nb.fill((0, 0, 0, 160))
+                self.screen.blit(nb, (cx+3, cy+card_h-27))
+                fn = get_font(18)
+                self.screen.blit(fn.render(general.name, True, Colors.WHITE), (cx+10, cy+card_h-24))
+
+                # 已选标记
                 if is_selected:
                     idx = list(selected.keys()).index(general.general_id) + 1
-                    self.screen.blit(fn.render(f"✓ 第{idx}选", True, Colors.GREEN), (cx + 8, cy + 235))
+                    tag = get_font(16).render(f"✓{idx}", True, Colors.GREEN)
+                    self.screen.blit(tag, (cx+card_w-28, cy+4))
 
+            # 已选列表
             if selected:
-                pf = get_font(22)
-                self.screen.blit(pf.render("已选: " + "  ".join(g.name for g in selected.values()), True, Colors.YELLOW), (30, current_h - 90))
+                pf = get_font(20)
+                names = "  ".join(g.name for g in selected.values())
+                self.screen.blit(pf.render(f"已选: {names}", True, Colors.YELLOW), (30, current_h - 90))
 
-            btn_done = render_button(self.screen, current_w // 2 - 80, current_h - 50, 160, 42,
-                                      f"完成选择 ({len(selected)}人)", len(selected) > 0,
-                                      hover=pygame.Rect(current_w//2-80, current_h-50, 160, 42).collidepoint(mx, my))
+            btn_done = render_button(self.screen, current_w//2 - 70, current_h - 50, 140, 42,
+                                      f"完成 ({len(selected)}人)", len(selected) > 0,
+                                      hover=pygame.Rect(current_w//2-70, current_h-50, 140, 42).collidepoint(mx, my))
             if rows > 2:
-                self.screen.blit(hint.render("滚轮上下翻页", True, Colors.GRAY), (current_w - 120, 12))
+                self.screen.blit(fs_hint.render("滚轮翻页", True, Colors.GRAY), (current_w-100, 14))
+
+            # === 放大预览 ===
+            if preview_general:
+                overlay = pygame.Surface((current_w, current_h), pygame.SRCALPHA)
+                overlay.fill((0, 0, 0, 190))
+                self.screen.blit(overlay, (0, 0))
+                pvw, pvh = 400, 580
+                pvx, pvy = (current_w-pvw)//2, (current_h-pvh)//2
+                pr = pygame.Rect(pvx, pvy, pvw, pvh)
+                pygame.draw.rect(self.screen, Colors.PANEL_BG, pr, border_radius=14)
+                camp_colors = {"蜀": (80,200,80), "魏": (200,80,80), "吴": (80,80,220), "他": (200,120,210)}
+                bc = camp_colors.get(preview_general.camp.value if hasattr(preview_general.camp, 'value') else "他", (200,160,50))
+                pygame.draw.rect(self.screen, bc, pr, 4, border_radius=14)
+
+                # 大卡图片
+                pimg = image_cache.get(preview_general.image_file)
+                if pimg:
+                    # 用更大尺寸重加载
+                    try:
+                        from src.utils.image_loader import get_image_loader
+                        big = get_image_loader().get_general_image(preview_general.image_file, size=None)
+                        if big:
+                            ow, oh = big.get_size()
+                            s2 = min((pvw-16)/ow, (pvh-40)/oh)
+                            pimg_big = pygame.transform.smoothscale(big, (int(ow*s2), int(oh*s2)))
+                            bix = pvx + (pvw - pimg_big.get_width())//2
+                            biy = pvy + (pvh - pimg_big.get_height())//2
+                            self.screen.blit(pimg_big, (bix, biy))
+                    except:
+                        self.screen.blit(pimg, (pvx+8, pvy+8))
+
+                # 名字
+                pn_bg = pygame.Surface((pvw-8, 36), pygame.SRCALPHA); pn_bg.fill((0,0,0,180))
+                self.screen.blit(pn_bg, (pvx+4, pvy+pvh-40))
+                pn_t = get_font(30).render(preview_general.name, True, Colors.WHITE)
+                self.screen.blit(pn_t, pn_t.get_rect(center=(current_w//2, pvy+pvh-22)))
+
+                # 提示
+                hint_t = get_font(18).render("双击选择 | 单击关闭预览", True, Colors.TEXT_SECONDARY)
+                self.screen.blit(hint_t, hint_t.get_rect(center=(current_w//2, pvy+pvh+20)))
+
             pygame.display.flip()
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     pygame.quit(); return None
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                    pygame.quit(); return None
+                    if preview_general:
+                        preview_general = None  # 先关预览
+                    else:
+                        pygame.quit(); return None
                 if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-                    if btn_done.collidepoint(event.pos) and len(selected) > 0:
+                    mx2, my2 = event.pos
+                    # 预览模式下点击 → 关闭预览（或双击选择）
+                    if preview_general:
+                        if pygame.Rect(pvx, pvy, pvw, pvh).collidepoint(mx2, my2):
+                            # 点击预览卡片内 = 双击选择
+                            if preview_general.general_id in selected:
+                                del selected[preview_general.general_id]
+                            else:
+                                selected[preview_general.general_id] = preview_general
+                            preview_general = None
+                        else:
+                            preview_general = None  # 点外面关闭
+                        continue
+                    # 完成按钮
+                    if btn_done.collidepoint(mx2, my2) and len(selected) > 0:
                         return list(selected.values())
+                    # 点击卡片
                     for i, rect in enumerate(card_rects):
-                        if rect and rect.collidepoint(event.pos):
+                        if rect and rect.collidepoint(mx2, my2):
                             g = pool[i]
-                            if g.general_id in selected: del selected[g.general_id]
-                            else: selected[g.general_id] = g
+                            now = pygame.time.get_ticks()
+                            # 双击检测：400ms 内点击同一张
+                            if g.general_id == last_clicked_id and now - last_click_time < 400:
+                                # 双击 → 选择/取消
+                                if g.general_id in selected:
+                                    del selected[g.general_id]
+                                else:
+                                    selected[g.general_id] = g
+                                last_clicked_id = None
+                            else:
+                                # 单击 → 如果已选则取消，否则放大预览
+                                if g.general_id in selected:
+                                    del selected[g.general_id]
+                                    last_clicked_id = None
+                                else:
+                                    preview_general = g
+                                last_clicked_id = g.general_id
+                            last_click_time = now
                             break
                 if event.type == pygame.MOUSEWHEEL:
                     scroll_offset += event.y * 40
@@ -690,14 +787,20 @@ class PygameUI:
             if img:
                 ix = cx+(cw2-img.get_width())//2; iy = cy+(430-img.get_height())//2
                 self.screen.blit(img, (ix, iy))
-            # 生平
-            bio = g.get("biography","")
-            if bio:
+            # 生平（从 generals_bios.py 读取）
+            from game_data.generals_bios import GENERALS_BIOGRAPHY
+            bio_data = GENERALS_BIOGRAPHY.get(g["name"], {})
+            bio_text = bio_data.get("text", "")
+            years = bio_data.get("years", "")
+            courtesy = bio_data.get("courtesy", "")
+            if bio_text:
                 by = cy+440
+                # 拼接完整生平
+                full_bio = f"{years}  |  {courtesy}\n\n{bio_text}"
                 lines = []; ln = ""
-                for c in bio:
+                for c in full_bio:
                     ln += c
-                    if len(ln) >= cw//27: lines.append(ln); ln = ""
+                    if len(ln) >= cw//24: lines.append(ln); ln = ""
                 if ln: lines.append(ln)
                 bh = len(lines)*26+28; bw2 = cw-180
                 br = pygame.Rect((cw-bw2)//2, by, bw2, bh)
