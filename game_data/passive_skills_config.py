@@ -8,6 +8,35 @@ from src.models.general import Attribute
 import random
 
 
+def round_half_up(value: float) -> int:
+    """四舍五入到整数，避免 Python round 的银行家舍入。"""
+    return int(value + 0.5)
+
+
+def odd_even_judgment(guess: str = None) -> dict:
+    """抛一枚六面骰并判定猜奇偶是否成功。
+
+    guess 传入 "odd"/"even" 或 "奇"/"偶"。未传入时自动随机猜测，
+    方便当前 CLI/测试自动流程在没有玩家交互入口时也能完成判定。
+    """
+    normalized_guess = guess
+    if normalized_guess in ("奇", "odd", "ODD"):
+        normalized_guess = "odd"
+    elif normalized_guess in ("偶", "even", "EVEN"):
+        normalized_guess = "even"
+    else:
+        normalized_guess = random.choice(["odd", "even"])
+
+    dice = random.randint(1, 6)
+    parity = "odd" if dice % 2 else "even"
+    return {
+        "guess": normalized_guess,
+        "dice": dice,
+        "parity": parity,
+        "success": normalized_guess == parity,
+    }
+
+
 class BraveryPassive(PassiveSkill):
     """勇猛被动技能"""
     
@@ -15,34 +44,23 @@ class BraveryPassive(PassiveSkill):
         super().__init__(
             skill_id="bravery_passive",
             name="勇猛",
-            description="在普攻对敌方造成伤害时，若自身生命小于等于最大生命值的一半，那么可以进行一次判定，若判定成功，那么本次造成的伤害值*1.5（四舍五入到整数）",
+            description="血量低于一半时，普攻可以猜奇偶判定。成功则本次伤害*1.5（四舍五入）",
             attribute_type="BRAVERY"
         )
+        self.last_judgment = None
     
-    def trigger_on_attack(self, caster, target, original_damage) -> int:
+    def trigger_on_attack(self, caster, target, original_damage, guess: str = None) -> int:
         """在攻击时触发"""
-        # 检查生命值条件：小于等于最大生命值的一半
-        if caster.current_hp <= caster.max_hp // 2:
-            # 进行判定（先留白，后续完成）
-            if self.judgment_check(caster):
-                # 伤害*1.5，四舍五入到整数
-                enhanced_damage = round(original_damage * 1.5)
-                return enhanced_damage
+        # 检查生命值条件：严格低于最大生命值的一半
+        if caster.current_hp < caster.max_hp / 2:
+            if self.judgment_check(caster, guess):
+                return round_half_up(original_damage * 1.5)
         return original_damage
     
-    def judgment_check(self, caster) -> bool:
-        """判定检查：武力越高成功率越高
-        - force >= 8: 80% 成功率
-        - force >= 6: 60% 成功率
-        - force < 6:  40% 成功率
-        """
-        force = caster.get_effective_force()
-        if force >= 8:
-            return random.random() < 0.8
-        elif force >= 6:
-            return random.random() < 0.6
-        else:
-            return random.random() < 0.4
+    def judgment_check(self, caster, guess: str = None) -> bool:
+        """判定检查：抛骰子猜奇偶。"""
+        self.last_judgment = odd_even_judgment(guess)
+        return self.last_judgment["success"]
 
 
 class CharismaPassive(PassiveSkill):
@@ -52,31 +70,21 @@ class CharismaPassive(PassiveSkill):
         super().__init__(
             skill_id="charisma_passive",
             name="魅力",
-            description="被击杀后可以进行一次判定，若判定成功则可以返还自身受到致死伤害的一半给攻击者",
+            description="受到致命伤害时猜奇偶判定。成功则对攻击者造成所受伤害一半（四舍五入）",
             attribute_type="CHARISMA"
         )
+        self.last_judgment = None
     
-    def trigger_on_death(self, caster, attacker, fatal_damage) -> int:
+    def trigger_on_death(self, caster, attacker, fatal_damage, guess: str = None) -> int:
         """在被击杀时触发"""
-        if self.judgment_check(caster):
-            # 返还致死伤害的一半给攻击者
-            return_damage = fatal_damage // 2
-            return return_damage
+        if self.judgment_check(caster, guess):
+            return round_half_up(fatal_damage / 2)
         return 0
     
-    def judgment_check(self, caster) -> bool:
-        """判定检查：智力越高成功率越高
-        - intelligence >= 8: 80% 成功率
-        - intelligence >= 6: 60% 成功率
-        - intelligence < 6:  40% 成功率
-        """
-        intelligence = caster.get_effective_intelligence()
-        if intelligence >= 8:
-            return random.random() < 0.8
-        elif intelligence >= 6:
-            return random.random() < 0.6
-        else:
-            return random.random() < 0.4
+    def judgment_check(self, caster, guess: str = None) -> bool:
+        """判定检查：抛骰子猜奇偶。"""
+        self.last_judgment = odd_even_judgment(guess)
+        return self.last_judgment["success"]
 
 
 class RecruitPassive(PassiveSkill):
@@ -107,28 +115,38 @@ class FencePassive(PassiveSkill):
         super().__init__(
             skill_id="fence_passive",
             name="防栅",
-            description="可以抵挡一次攻击，防御后失效",
+            description="抵挡一次普攻。被攻破后两回合若武将仍存活，则自动重建",
             attribute_type="FENCE"
         )
         self.is_active = True  # 防栅状态
+        self.rebuild_turns_remaining = 0
     
-    def trigger_on_receive_damage(self, caster, damage) -> int:
+    def trigger_on_receive_damage(self, caster, damage, damage_source: str = "basic_attack") -> int:
         """在受到伤害时触发"""
-        if self.is_active:
-            # 抵挡一次攻击
-            self.is_active = False  # 防御后失效
+        if damage_source == "basic_attack" and self.is_active:
+            self.is_active = False
+            self.rebuild_turns_remaining = 2
             return 0  # 伤害完全抵挡
         return damage  # 防栅失效，正常受到伤害
 
+    def update_rebuild(self, caster) -> None:
+        """回合开始时更新防栅重建倒计时。"""
+        if self.is_active or not caster.is_alive:
+            return
+        if self.rebuild_turns_remaining > 0:
+            self.rebuild_turns_remaining -= 1
+        if self.rebuild_turns_remaining <= 0:
+            self.is_active = True
+
 
 class ChainPassive(PassiveSkill):
-    """连环被动技能"""
+    """连计被动技能"""
     
     def __init__(self):
         super().__init__(
             skill_id="chain_passive",
-            name="连环",
-            description="己方所有拥有连环的武将共享buff、debuff以及伤害",
+            name="连计",
+            description="己方所有拥有连计的武将共享技能效果（增益/减益）与伤害",
             attribute_type="CHAIN"
         )
     
@@ -188,20 +206,14 @@ class AmbushPassive(PassiveSkill):
         super().__init__(
             skill_id="ambush_passive",
             name="伏兵",
-            description="在使用技能之前不会被敌方选中，若己方只剩下拥有伏兵的武将存活，伏兵自动破隐",
+            description="未发动技能前不会被普攻选中；可替友军承受一半普攻伤害并破隐",
             attribute_type="AMBUSH"
         )
         self.is_hidden = True  # 隐藏状态
     
     def check_auto_reveal(self, team_generals):
         """检查是否需要自动破隐"""
-        # 检查己方存活武将
-        alive_allies = [g for g in team_generals if g.is_alive]
-        non_ambush_alive = [g for g in alive_allies if not self.has_ambush_attribute(g)]
-        
-        # 如果只剩下伏兵武将存活，自动破隐
-        if len(non_ambush_alive) == 0:
-            self.is_hidden = False
+        return
     
     def has_ambush_attribute(self, general):
         """检查武将是否有伏兵属性"""
@@ -210,7 +222,6 @@ class AmbushPassive(PassiveSkill):
     
     def can_be_targeted(self, caster, team_generals) -> bool:
         """检查是否可以被选中"""
-        self.check_auto_reveal(team_generals)
         return not self.is_hidden
     
     def reveal_after_skill_use(self):

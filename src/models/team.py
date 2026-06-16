@@ -16,6 +16,7 @@ class Camp(Enum):
     WEI = "魏"
     SHU = "蜀"
     WU = "吴"
+    YUAN = "袁"
     QUN = "群"
 
 class Team:
@@ -39,6 +40,8 @@ class Team:
         # 阵型系统 - 3行4列的方格 (行, 列)
         self.formation: List[List[Optional[General]]] = [[None for _ in range(4)] for _ in range(3)]
         self.formation_setup_complete = False
+        self.temporary_formation_effects = []
+        self.pending_morale_rewards = []
 
     def position_general(self, general: 'General', row: int, col: int) -> bool:
         """
@@ -103,12 +106,128 @@ class Team:
     
     def get_attackable_targets(self) -> List['General']:
         """
-        获取可以被攻击的目标（只有最前排的武将可以被攻击）
+        获取可以被普攻的目标（只有最前排且未处于伏兵隐藏状态的武将可以被攻击）
         
         Returns:
             List[General]: 可以被攻击的武将列表
         """
-        return self.get_front_row_generals()
+        return [
+            general for general in self.get_front_row_generals()
+            if general.can_be_targeted_by_enemy(self.generals)
+        ]
+
+    def swap_general_positions(self, first: 'General', second: 'General') -> bool:
+        """交换两名武将在阵型中的位置。"""
+        first_pos = self.get_general_position(first)
+        second_pos = self.get_general_position(second)
+        if first_pos is None or second_pos is None:
+            return False
+        first_row, first_col = first_pos
+        second_row, second_col = second_pos
+        self.formation[first_row][first_col] = second
+        self.formation[second_row][second_col] = first
+        return True
+
+    def resolve_ambush_interception(self, target: 'General', damage: int) -> Tuple['General', int]:
+        """隐藏伏兵替友军承受普攻的一半伤害，并与目标交换位置。"""
+        if target not in self.generals:
+            return target, damage
+
+        for general in self.get_alive_generals():
+            if general == target or not general.has_passive_skill("伏兵"):
+                continue
+            ambush_passive = general.get_passive_skill("伏兵")
+            if not ambush_passive.is_hidden:
+                continue
+
+            self.swap_general_positions(general, target)
+            ambush_passive.reveal_after_skill_use()
+            intercepted_damage = int(damage / 2 + 0.5)
+            return general, max(1, intercepted_damage)
+
+        return target, damage
+
+    def get_front_target_in_column(self, col: int) -> Optional['General']:
+        """获取指定列最前方且可被普攻选中的目标。"""
+        if not (0 <= col < 4):
+            return None
+        for row in range(3):
+            general = self.formation[row][col]
+            if general is not None and general.can_be_targeted_by_enemy(self.generals):
+                return general
+        return None
+
+    def apply_temporary_2x2_rearrangement(self) -> dict:
+        """临时重排敌方一个 2x2 方格内的武将，回合结束后可恢复。"""
+        best_positions = []
+        best_generals = []
+
+        for row in range(2):
+            for col in range(3):
+                block_positions = [
+                    (row, col), (row, col + 1),
+                    (row + 1, col), (row + 1, col + 1),
+                ]
+                block_generals = [
+                    self.formation[r][c]
+                    for r, c in block_positions
+                    if self.formation[r][c] is not None
+                    and self.formation[r][c].is_alive
+                ]
+                if len(block_generals) > len(best_generals):
+                    best_positions = block_positions
+                    best_generals = block_generals
+
+        if not best_generals:
+            return {"success": False, "message": "目标 2x2 方格内没有可移动武将"}
+
+        original_positions = {
+            general: self.get_general_position(general)
+            for general in best_generals
+        }
+        occupied_positions = [original_positions[general] for general in best_generals]
+        new_positions = list(reversed(occupied_positions))
+
+        for general in best_generals:
+            current_pos = self.get_general_position(general)
+            if current_pos:
+                self.formation[current_pos[0]][current_pos[1]] = None
+
+        moves = []
+        for general, new_pos in zip(best_generals, new_positions):
+            self.formation[new_pos[0]][new_pos[1]] = general
+            moves.append({
+                "general": general.name,
+                "from": original_positions[general],
+                "to": new_pos,
+            })
+
+        self.temporary_formation_effects.append({
+            "generals": list(best_generals),
+            "positions": original_positions,
+        })
+
+        return {
+            "success": True,
+            "block": best_positions,
+            "moves": moves,
+        }
+
+    def revert_temporary_formations(self) -> None:
+        """恢复本回合临时阵型调整。"""
+        while self.temporary_formation_effects:
+            effect = self.temporary_formation_effects.pop()
+            generals = effect["generals"]
+            original_positions = effect["positions"]
+
+            for general in generals:
+                current_pos = self.get_general_position(general)
+                if current_pos:
+                    self.formation[current_pos[0]][current_pos[1]] = None
+
+            for general, position in original_positions.items():
+                if general.is_alive and position:
+                    self.formation[position[0]][position[1]] = general
     
     def is_position_empty(self, row: int, col: int) -> bool:
         """
@@ -365,6 +484,31 @@ class Team:
         self.current_morale -= amount
         return True
 
+    def add_pending_morale_reward(
+            self,
+            amount: int,
+            delay_turns: int,
+            required_alive_generals: List['General'] = None) -> None:
+        """添加延迟士气奖励，结算时要求指定武将仍然存活。"""
+        self.pending_morale_rewards.append({
+            "amount": amount,
+            "delay_turns": max(1, delay_turns),
+            "required_alive_generals": list(required_alive_generals or []),
+        })
+
+    def resolve_pending_morale_rewards(self) -> None:
+        """结算到期的延迟士气奖励。"""
+        remaining_rewards = []
+        for reward in self.pending_morale_rewards:
+            reward["delay_turns"] -= 1
+            if reward["delay_turns"] <= 0:
+                required_generals = reward.get("required_alive_generals", [])
+                if all(general.is_alive for general in required_generals):
+                    self.gain_morale(reward["amount"])
+            else:
+                remaining_rewards.append(reward)
+        self.pending_morale_rewards = remaining_rewards
+
     def can_use_skill(self, general: 'General') -> bool:
         """
         检查武将是否可以使用主动技能
@@ -400,8 +544,11 @@ class Team:
         return general.use_active_skill(targets, battle_context, self)
 
     def update_effects(self):
-        """更新队伍中所有武将的效果持续时间和技能冷却"""
+        """更新队伍中所有武将的回合开始被动、效果持续时间和技能冷却"""
+        self.resolve_pending_morale_rewards()
         for general in self.generals:
+            if general.is_alive:
+                general.trigger_turn_start_passives()
             general.update_effects()
 
     def get_team_info(self) -> str:

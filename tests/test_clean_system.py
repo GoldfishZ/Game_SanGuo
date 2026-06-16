@@ -1,6 +1,6 @@
 """
 测试武将系统
-验证15武将数据加载、技能独立冷却、士气上限
+验证武将数据加载、技能独立冷却、士气上限
 """
 
 import sys
@@ -17,7 +17,7 @@ from src.models.general import Camp, Rarity
 def test_all_generals():
     """测试所有武将数据加载"""
     print("🧹" * 20)
-    print("   测试武将系统（15人）")
+    print(f"   测试武将系统（{len(GENERALS_DATA)}人）")
     print("🧹" * 20)
 
     all_generals = game_data_manager.get_general_list()
@@ -44,7 +44,7 @@ def test_all_generals():
 
     # 验证每个阵营都有武将
     for camp, count in info['camp_distribution'].items():
-        if camp in ('蜀', '魏', '吴', '他'):
+        if camp in ('蜀', '魏', '吴', '袁', '他'):
             assert count > 0, f"{camp}阵营应有武将"
 
 
@@ -58,13 +58,22 @@ def test_specific_generals():
         ("张任", "他", "COMMON", 6, 6, "伏兵", "强化战术"),
         ("刘备", "蜀", "RARE", 5, 7, "魅力", "鼓舞"),
         ("关羽", "蜀", "EPIC", 9, 5, "勇猛", "猛攻"),
-        ("曹操", "魏", "LEGENDARY", 7, 9, "魅力", "鼓舞"),
-        ("吕布", "他", "LEGENDARY", 10, 2, "勇猛", "猛攻"),
-        ("诸葛亮", "蜀", "LEGENDARY", 3, 10, "连环", "火计"),
+        ("张飞", "蜀", "EPIC", 8, 4, "勇猛", "轮枪战术"),
+        ("曹操", "魏", "EPIC", 7, 9, "魅力", "全军攻城"),
+        ("夏侯惇", "魏", "RARE", 8, 6, "勇猛", "魏王的卫兵"),
+        ("曹仁", "魏", "RARE", 5, 6, None, "刹那的号令"),
+        ("张辽", "凉", "RARE", 7, 6, "连计", "人马一体"),
+        ("吕布", "凉", "LEGENDARY", 10, 1, "勇猛", "天下无双"),
+        ("董卓", "凉", "EPIC", 8, 7, "魅力", "人马大号令"),
+        ("诸葛亮", "蜀", "RARE", 3, 10, "防栅", "石兵八阵"),
         ("鲁肃", "吴", "RARE", 4, 8, "防栅", "同盟缔结"),
+        ("大乔", "吴", "COMMON", 2, 4, ("募兵", "魅力"), "江东的大美人"),
+        ("太史慈", "吴", "EPIC", 8, 4, None, "天衣无缝"),
+        ("汉献帝", "他", "COMMON", 1, 5, ("魅力", "防栅"), "敕命"),
+        ("田丰", "袁", "RARE", 4, 9, "伏兵", "缜密的攻势"),
     ]
 
-    for name, camp, rarity, force, intelligence, attr, skill in checks:
+    for name, camp, rarity, force, intelligence, attrs, skill in checks:
         g = get_general_by_name(name)
         assert g is not None, f"{name} 创建失败"
         assert g.camp.value == camp, f"{name} 阵营: 期望{camp} 实际{g.camp.value}"
@@ -72,11 +81,14 @@ def test_specific_generals():
         assert g.force == force, f"{name} 武力: 期望{force} 实际{g.force}"
         assert g.intelligence == intelligence, f"{name} 智力: 期望{intelligence} 实际{g.intelligence}"
         assert g.max_hp == force + intelligence, f"{name} 生命: 期望{force+intelligence} 实际{g.max_hp}"
-        if attr:
-            assert attr in [a.value for a in g.attribute], f"{name} 应有属性{attr}"
+        expected_attrs = attrs if isinstance(attrs, tuple) else (attrs,)
+        for attr in expected_attrs:
+            if attr:
+                assert attr in [a.value for a in g.attribute], f"{name} 应有属性{attr}"
         assert g.active_skill is not None, f"{name} 应有主动技能"
         assert g.active_skill.name == skill, f"{name} 技能: 期望{skill} 实际{g.active_skill.name}"
-        print(f"   ✅ {name}: {force}武 {intelligence}智 [{attr}] {skill}")
+        attr_text = "/".join([attr for attr in expected_attrs if attr]) or "无"
+        print(f"   ✅ {name}: {force}武 {intelligence}智 [{attr_text}] {skill}")
 
 
 def test_skill_independence():
@@ -136,38 +148,38 @@ def test_chain_integration():
     print("   测试连环被动技能集成")
     print("🔗" * 20)
 
-    # 诸葛亮有连环属性
-    zhuge_liang_1 = get_general_by_name("诸葛亮")
-    zhuge_liang_2 = get_general_by_name("诸葛亮")
-    assert zhuge_liang_1 and zhuge_liang_2
+    # 周瑜有连环/连计属性
+    chain_general_1 = get_general_by_name("周瑜")
+    chain_general_2 = get_general_by_name("周瑜")
+    assert chain_general_1 and chain_general_2
 
     team = Team("测试连环队伍", Camp.SHU)
-    team.add_general(zhuge_liang_1)
-    team.add_general(zhuge_liang_2)
+    team.add_general(chain_general_1)
+    team.add_general(chain_general_2)
 
     # 放置到阵型
-    team.position_general(zhuge_liang_1, 0, 0)
-    team.position_general(zhuge_liang_2, 0, 1)
+    team.position_general(chain_general_1, 0, 0)
+    team.position_general(chain_general_2, 0, 1)
 
     # 两人都有连环
-    assert zhuge_liang_1.has_passive_skill("连环")
-    assert zhuge_liang_2.has_passive_skill("连环")
+    assert chain_general_1.has_passive_skill("连环")
+    assert chain_general_2.has_passive_skill("连环")
 
-    hp_before = zhuge_liang_2.current_hp
-    print(f"   攻击前: 诸葛亮1 HP={zhuge_liang_1.current_hp}/{zhuge_liang_1.max_hp}, "
-          f"诸葛亮2 HP={zhuge_liang_2.current_hp}/{zhuge_liang_2.max_hp}")
+    hp_before = chain_general_2.current_hp
+    print(f"   攻击前: 周瑜1 HP={chain_general_1.current_hp}/{chain_general_1.max_hp}, "
+          f"周瑜2 HP={chain_general_2.current_hp}/{chain_general_2.max_hp}")
 
     # 创建攻击者
     from src.models.general import General, Attribute
     attacker = General(9999, "测试攻击者", Camp.WEI, Rarity.COMMON, 1.0, 10, 5)
-    attacker.attack(zhuge_liang_1)
+    attacker.attack(chain_general_1)
 
-    print(f"   攻击后: 诸葛亮1 HP={zhuge_liang_1.current_hp}/{zhuge_liang_1.max_hp}, "
-          f"诸葛亮2 HP={zhuge_liang_2.current_hp}/{zhuge_liang_2.max_hp}")
+    print(f"   攻击后: 周瑜1 HP={chain_general_1.current_hp}/{chain_general_1.max_hp}, "
+          f"周瑜2 HP={chain_general_2.current_hp}/{chain_general_2.max_hp}")
 
-    # 诸葛亮2 也应该受到伤害（连环分担）
-    assert zhuge_liang_2.current_hp < hp_before, \
-        f"连环分担失败：诸葛亮2 HP应由{hp_before}减少"
+    # 周瑜2 也应该受到伤害（连环分担）
+    assert chain_general_2.current_hp < hp_before, \
+        f"连环分担失败：周瑜2 HP应由{hp_before}减少"
     print("   ✅ 连环伤害分担成功！")
 
 
@@ -181,8 +193,13 @@ if __name__ == "__main__":
     test_chain_integration()
 
     print(f"\n✅ 测试完成！")
-    print(f"   📋 武将: {len(GENERALS_DATA)}人，覆盖4个阵营")
-    print(f"   🔥 技能: 6个主动技能 + 7个被动技能")
+    active_skill_count = len({
+        data["skill_id"] for data in GENERALS_DATA
+        if data.get("skill_id")
+    })
+    camp_count = len({data["camp"] for data in GENERALS_DATA})
+    print(f"   📋 武将: {len(GENERALS_DATA)}人，覆盖{camp_count}个阵营")
+    print(f"   🔥 技能: {active_skill_count}个主动技能 + 7个被动技能")
     print(f"   ⚡ 士气: 固定上限12")
     print(f"   💚 生命: 武力+智力")
     print(f"   🎯 冷却: 每个武将独立管理")

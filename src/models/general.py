@@ -5,9 +5,35 @@
 
 from typing import List, Dict, Optional, TYPE_CHECKING
 from enum import Enum
+import random
 
 if TYPE_CHECKING:
     from ..skills.skill_base import Skill, PassiveSkill
+
+
+def round_half_up(value: float) -> int:
+    """四舍五入到整数。"""
+    return int(value + 0.5)
+
+
+def odd_even_judgment(guess: str = None) -> dict:
+    """抛一枚六面骰并判定猜奇偶是否成功。"""
+    normalized_guess = guess
+    if normalized_guess in ("奇", "odd", "ODD"):
+        normalized_guess = "odd"
+    elif normalized_guess in ("偶", "even", "EVEN"):
+        normalized_guess = "even"
+    else:
+        normalized_guess = random.choice(["odd", "even"])
+
+    dice = random.randint(1, 6)
+    parity = "odd" if dice % 2 else "even"
+    return {
+        "guess": normalized_guess,
+        "dice": dice,
+        "parity": parity,
+        "success": normalized_guess == parity,
+    }
 
 
 class Camp(Enum):
@@ -40,7 +66,7 @@ class Attribute(Enum):
     CHARISMA = "魅力"     # 魅力
     RECRUIT = "募兵"      # 募兵
     FENCE = "防栅"        # 防栅
-    CHAIN = "连环"        # 连环
+    CHAIN = "连计"        # 连计
     REVIVE = "复活"       # 复活
     AMBUSH = "伏兵"       # 伏兵
     
@@ -99,14 +125,17 @@ class General:
         self.is_alive = True
         self.buffs: List[Dict] = []  # 增益效果
         self.debuffs: List[Dict] = []  # 减益效果
+        self.pending_buffs: List[Dict] = []  # 延迟生效的增益效果
         
         # 技能冷却管理
         self.active_skill_cooldown = 0  # 主动技能当前冷却时间
+        self.last_attack_speed_judgment = None
 
         # 所属队伍弱引用（由 Team.add_general 设置，用于连环等需要团队信息的被动技能）
         self._team = None
         
-    def take_damage(self, damage: int, attacker: 'General' = None) -> int:
+    def take_damage(self, damage: int, attacker: 'General' = None,
+                    damage_source: str = "basic_attack") -> int:
         """
         受到伤害
         
@@ -120,23 +149,34 @@ class General:
         original_damage = damage
         actual_damage = max(0, damage)
         
-        # 触发防栅被动技能
-        if self.has_passive_skill("防栅"):
+        ignores_fence = (
+            damage_source == "basic_attack"
+            and attacker is not None
+            and attacker.has_buff_type("ignore_fence")
+        )
+
+        if damage_source != "guard_share":
+            actual_damage = self.share_damage_with_cao_guard(actual_damage, attacker)
+
+        # 触发防栅被动技能（仅普攻，攻城状态可无视）
+        if self.has_passive_skill("防栅") and not ignores_fence:
             fence_passive = self.get_passive_skill("防栅")
-            actual_damage = fence_passive.trigger_on_receive_damage(self, actual_damage)
+            actual_damage = fence_passive.trigger_on_receive_damage(
+                self, actual_damage, damage_source
+            )
         
         # 触发连环被动技能（伤害分担）
-        if self.has_passive_skill("连环"):
-            chain_passive = self.get_passive_skill("连环")
-            # 找到己方所有拥有连环的存活武将，分担伤害
+        if self.has_chain_passive():
+            chain_passive = self.get_chain_passive()
+            # 找到己方所有拥有连计的存活武将，分担伤害
             chain_generals = []
             if self._team:
                 for g in self._team.generals:
-                    if g.is_alive and g.has_passive_skill("连环"):
+                    if g.is_alive and g.has_chain_passive():
                         chain_generals.append(g)
             if len(chain_generals) > 1:
                 actual_damage = chain_passive.share_damage(chain_generals, actual_damage)
-                # 将分担后的伤害应用到每个连环武将（跳过自己，已经算过了）
+                # 将分担后的伤害应用到每个连计武将（跳过自己，已经算过了）
                 for g in chain_generals:
                     if g != self:
                         g.current_hp = max(0, g.current_hp - actual_damage)
@@ -164,7 +204,7 @@ class General:
                 charisma_passive = self.get_passive_skill("魅力")
                 return_damage = charisma_passive.trigger_on_death(self, attacker, fatal_damage)
                 if return_damage > 0:
-                    attacker.take_damage(return_damage)
+                    attacker.take_damage(return_damage, self, "passive")
                     
         return actual_damage
     
@@ -258,7 +298,22 @@ class General:
         """
         if not self.is_alive or not target.is_alive:
             return 0
-        
+        if self.has_buff_type("front_only_attack") and not self.can_attack_front_target(target):
+            return 0
+
+        actual_damage = self._perform_basic_attack_once(target)
+
+        if self.has_buff_type("attack_speed_judgment"):
+            self.consume_buff_type("attack_speed_judgment")
+            judgment = odd_even_judgment()
+            self.last_attack_speed_judgment = judgment
+            if judgment["success"] and target.is_alive:
+                actual_damage += self._perform_basic_attack_once(target)
+
+        return actual_damage
+
+    def _perform_basic_attack_once(self, target: 'General') -> int:
+        """执行一次基础普攻结算。"""
         damage = self.calculate_damage_to(target)
         
         # 触发勇猛被动技能
@@ -266,12 +321,13 @@ class General:
             bravery_passive = self.get_passive_skill("勇猛")
             damage = bravery_passive.trigger_on_attack(self, target, damage)
         
-        # 触发伏兵破隐（使用技能后）
-        if self.has_passive_skill("伏兵"):
-            ambush_passive = self.get_passive_skill("伏兵")
-            ambush_passive.reveal_after_skill_use()
+        # 隐藏伏兵可替友军承受普攻的一半伤害，并与目标交换位置
+        if target._team:
+            target, damage = target._team.resolve_ambush_interception(
+                target, damage
+            )
         
-        actual_damage = target.take_damage(damage, self)
+        actual_damage = target.take_damage(damage, self, "basic_attack")
         
         return actual_damage
     
@@ -282,6 +338,16 @@ class General:
             'value': value,
             'duration': duration
         })
+        self.sync_chain_effects()
+
+    def add_pending_buff(self, buff_type: str, value: int, duration: int, delay_turns: int):
+        """添加一个延迟生效的增益效果。"""
+        self.pending_buffs.append({
+            'type': buff_type,
+            'value': value,
+            'duration': duration,
+            'delay_turns': max(1, delay_turns),
+        })
     
     def add_debuff(self, debuff_type: str, value: int, duration: int):
         """添加减益效果"""
@@ -290,6 +356,47 @@ class General:
             'value': value,
             'duration': duration
         })
+        self.sync_chain_effects()
+
+    def has_buff_type(self, buff_type: str) -> bool:
+        """检查当前是否拥有指定类型的增益状态。"""
+        return any(buff.get('type') == buff_type for buff in self.buffs)
+
+    def consume_buff_type(self, buff_type: str) -> bool:
+        """消耗一个指定类型的增益状态。"""
+        for index, buff in enumerate(self.buffs):
+            if buff.get('type') == buff_type:
+                del self.buffs[index]
+                return True
+        return False
+
+    def share_damage_with_cao_guard(self, damage: int, attacker: 'General' = None) -> int:
+        """曹操受伤时，由同队存活的夏侯惇常驻承担一半伤害。"""
+        if self.name != "曹操" or not self._team or damage <= 0:
+            return damage
+
+        for general in self._team.get_alive_generals():
+            if general is self:
+                continue
+            if general.name == "夏侯惇":
+                guard_damage = min(damage, round_half_up(damage / 2))
+                remaining_damage = max(0, damage - guard_damage)
+                general.take_damage(guard_damage, attacker, "guard_share")
+                return remaining_damage
+
+        return damage
+
+    def can_attack_front_target(self, target: 'General') -> bool:
+        """攻城状态下只能攻击正前方同列且可被普攻选中的武将。"""
+        if not self._team or not target._team:
+            return True
+        attacker_pos = self._team.get_general_position(self)
+        target_pos = target._team.get_general_position(target)
+        if attacker_pos is None or target_pos is None:
+            return True
+        if attacker_pos[1] != target_pos[1]:
+            return False
+        return target in target._team.get_attackable_targets()
     
     def update_effects(self):
         """更新效果持续时间和技能冷却"""
@@ -302,27 +409,34 @@ class General:
         for debuff in self.debuffs:
             debuff['duration'] -= 1
 
+        self.activate_pending_buffs()
+
         # 更新主动技能冷却
         if self.active_skill_cooldown > 0:
             self.active_skill_cooldown -= 1
 
-        # 连环：同步效果到所有连环武将
-        if self.has_passive_skill("连环") and self._team:
-            chain_generals = [
-                g for g in self._team.generals
-                if g.is_alive and g.has_passive_skill("连环")
-            ]
-            if len(chain_generals) > 1:
-                # 收集所有连环武将的 buff/debuff
-                all_buffs = []
-                all_debuffs = []
-                for g in chain_generals:
-                    all_buffs.extend(g.buffs)
-                    all_debuffs.extend(g.debuffs)
-                # 统一分配（去重后再分）
-                for g in chain_generals:
-                    g.buffs = [b.copy() for b in all_buffs]
-                    g.debuffs = [d.copy() for d in all_debuffs]
+        # 防栅：被攻破后两回合重建
+        if self.has_passive_skill("防栅"):
+            fence_passive = self.get_passive_skill("防栅")
+            fence_passive.update_rebuild(self)
+
+        # 连计：同步效果到所有连计武将
+        self.sync_chain_effects()
+
+    def activate_pending_buffs(self):
+        """将到期的延迟增益加入当前增益列表。"""
+        remaining_pending_buffs = []
+        for pending in self.pending_buffs:
+            pending['delay_turns'] -= 1
+            if pending['delay_turns'] <= 0:
+                self.add_buff(
+                    pending['type'],
+                    pending['value'],
+                    pending['duration'],
+                )
+            else:
+                remaining_pending_buffs.append(pending)
+        self.pending_buffs = remaining_pending_buffs
     
     def trigger_turn_start_passives(self):
         """触发回合开始时的被动技能"""
@@ -336,14 +450,49 @@ class General:
     
     def has_passive_skill(self, skill_name: str) -> bool:
         """检查是否拥有指定的被动技能"""
-        return any(skill.name == skill_name for skill in self.passive_skills)
+        names = [skill_name]
+        if skill_name == "连环":
+            names.append("连计")
+        elif skill_name == "连计":
+            names.append("连环")
+        return any(skill.name in names for skill in self.passive_skills)
     
     def get_passive_skill(self, skill_name: str):
         """获取指定的被动技能实例"""
         for skill in self.passive_skills:
             if skill.name == skill_name:
                 return skill
+            if skill_name in ("连环", "连计") and skill.name in ("连环", "连计"):
+                return skill
         return None
+
+    def has_chain_passive(self) -> bool:
+        """兼容旧名“连环”和新名“连计”。"""
+        return self.has_passive_skill("连计")
+
+    def get_chain_passive(self):
+        """获取连计被动实例。"""
+        return self.get_passive_skill("连计")
+
+    def sync_chain_effects(self):
+        """同步己方连计武将的增益和减益效果。"""
+        if not self.has_chain_passive() or not self._team:
+            return
+        chain_generals = [
+            g for g in self._team.generals
+            if g.is_alive and g.has_chain_passive()
+        ]
+        if len(chain_generals) <= 1:
+            return
+
+        all_buffs = []
+        all_debuffs = []
+        for g in chain_generals:
+            all_buffs.extend(g.buffs)
+            all_debuffs.extend(g.debuffs)
+        for g in chain_generals:
+            g.buffs = [b.copy() for b in all_buffs]
+            g.debuffs = [d.copy() for d in all_debuffs]
     
     def can_be_targeted_by_enemy(self, team_generals=None) -> bool:
         """检查是否可以被敌方选中（考虑伏兵等效果）"""
@@ -400,6 +549,9 @@ class General:
         
         # 执行技能效果
         result = self.active_skill.execute(self, targets, battle_context)
+        if result.get("success") and self.has_passive_skill("伏兵"):
+            ambush_passive = self.get_passive_skill("伏兵")
+            ambush_passive.reveal_after_skill_use()
         result["skill_name"] = self.active_skill.name
         result["caster"] = self.name
         result["morale_consumed"] = self.active_skill.morale_cost

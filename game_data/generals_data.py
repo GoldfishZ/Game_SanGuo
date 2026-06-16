@@ -10,7 +10,7 @@
   cost        费用
   force       武力 (影响普攻伤害)
   intelligence 智力 (影响策略伤害)
-  attributes  属性列表: 勇猛/魅力/募兵/防栅/连环/复活/伏兵 (空列表=无属性)
+  attributes  属性列表: 勇猛/魅力/募兵/防栅/连计/复活/伏兵 (空列表=无属性)
   skill_id    主动技能ID (skills_config.py 中定义)
   image_file  武将卡图片文件名 (存放在 assets/images/generals/)
 """
@@ -47,10 +47,10 @@ GENERALS_DATA = [
         "camp": "蜀",
         "rarity": "EPIC",
         "cost": 2.0,
-        "force": 10,
-        "intelligence": 3,
+        "force": 8,
+        "intelligence": 4,
         "attributes": ["勇猛"],
-        "skill_id": "fierce_attack",
+        "skill_id": "spear_wheel_tactics",
         "image_file": "zhang_fei.png"
     },
     {
@@ -69,12 +69,12 @@ GENERALS_DATA = [
         "id": 2005,
         "name": "诸葛亮",
         "camp": "蜀",
-        "rarity": "LEGENDARY",
-        "cost": 3.0,
+        "rarity": "RARE",
+        "cost": 1.5,
         "force": 3,
         "intelligence": 10,
-        "attributes": ["连环"],
-        "skill_id": "fire_attack",
+        "attributes": ["防栅"],
+        "skill_id": "stone_sentinel_maze",
         "image_file": "zhuge_liang.png"
     },
 
@@ -83,12 +83,12 @@ GENERALS_DATA = [
         "id": 3001,
         "name": "曹操",
         "camp": "魏",
-        "rarity": "LEGENDARY",
-        "cost": 3.0,
+        "rarity": "EPIC",
+        "cost": 2.0,
         "force": 7,
         "intelligence": 9,
         "attributes": ["魅力"],
-        "skill_id": "rally",
+        "skill_id": "siege_all_army",
         "image_file": "cao_cao.png"
     },
     {
@@ -98,21 +98,21 @@ GENERALS_DATA = [
         "rarity": "RARE",
         "cost": 1.5,
         "force": 8,
-        "intelligence": 5,
+        "intelligence": 6,
         "attributes": ["勇猛"],
-        "skill_id": "strength_tactics",
+        "skill_id": "wei_king_guard",
         "image_file": "xiahou_dun.png"
     },
     {
         "id": 3003,
         "name": "张辽",
-        "camp": "魏",
+        "camp": "凉",
         "rarity": "RARE",
         "cost": 1.5,
-        "force": 8,
-        "intelligence": 7,
-        "attributes": ["募兵"],
-        "skill_id": "fierce_attack",
+        "force": 7,
+        "intelligence": 6,
+        "attributes": ["连计"],
+        "skill_id": "cavalry_unity",
         "image_file": "zhang_liao.png"
     },
     {
@@ -126,6 +126,18 @@ GENERALS_DATA = [
         "attributes": ["伏兵"],
         "skill_id": "intimidate",
         "image_file": "sima_yi.png"
+    },
+    {
+        "id": 3005,
+        "name": "曹仁",
+        "camp": "魏",
+        "rarity": "RARE",
+        "cost": 1.5,
+        "force": 5,
+        "intelligence": 6,
+        "attributes": [],
+        "skill_id": "momentary_order",
+        "image_file": "cao_ren.png"
     },
 
     # ==================== 吴 ====================
@@ -149,7 +161,7 @@ GENERALS_DATA = [
         "cost": 2.0,
         "force": 5,
         "intelligence": 9,
-        "attributes": ["连环"],
+        "attributes": ["连计"],
         "skill_id": "fire_attack",
         "image_file": "zhou_yu.png"
     },
@@ -157,13 +169,37 @@ GENERALS_DATA = [
         "id": 4003,
         "name": "甘宁",
         "camp": "吴",
-        "rarity": "RARE",
-        "cost": 1.5,
-        "force": 9,
-        "intelligence": 4,
-        "attributes": ["募兵"],
-        "skill_id": "fierce_attack",
+        "rarity": "EPIC",
+        "cost": 2.5,
+        "force": 8,
+        "intelligence": 6,
+        "attributes": ["勇猛"],
+        "skill_id": "strength_tactics",
         "image_file": "gan_ning.png"
+    },
+    {
+        "id": 4004,
+        "name": "大乔",
+        "camp": "吴",
+        "rarity": "COMMON",
+        "cost": 1.0,
+        "force": 2,
+        "intelligence": 4,
+        "attributes": ["募兵", "魅力"],
+        "skill_id": "jiangdong_beauty",
+        "image_file": "da_qiao.png"
+    },
+    {
+        "id": 4005,
+        "name": "太史慈",
+        "camp": "吴",
+        "rarity": "EPIC",
+        "cost": 2.0,
+        "force": 8,
+        "intelligence": 4,
+        "attributes": [],
+        "skill_id": "flawless",
+        "image_file": "taishi_ci.png"
     },
 
     # ==================== 他 ====================
@@ -180,16 +216,40 @@ GENERALS_DATA = [
         "image_file": "zhang_ren.png"
     },
     {
+        "id": 1004,
+        "name": "汉献帝",
+        "camp": "他",
+        "rarity": "COMMON",
+        "cost": 1.0,
+        "force": 1,
+        "intelligence": 5,
+        "attributes": ["魅力", "防栅"],
+        "skill_id": "imperial_edict",
+        "image_file": "han_xian_di.png"
+    },
+    {
         "id": 5001,
         "name": "吕布",
-        "camp": "他",
+        "camp": "凉",
         "rarity": "LEGENDARY",
         "cost": 3.0,
         "force": 10,
-        "intelligence": 2,
+        "intelligence": 1,
         "attributes": ["勇猛"],
-        "skill_id": "fierce_attack",
+        "skill_id": "peerless_under_heaven",
         "image_file": "lv_bu.png"
+    },
+    {
+        "id": 5002,
+        "name": "董卓",
+        "camp": "凉",
+        "rarity": "EPIC",
+        "cost": 2.5,
+        "force": 8,
+        "intelligence": 7,
+        "attributes": ["魅力"],
+        "skill_id": "grand_cavalry_order",
+        "image_file": "dong_zhuo.png"
     },
     {
         "id": 1003,
@@ -202,5 +262,19 @@ GENERALS_DATA = [
         "attributes": ["防栅"],
         "skill_id": "alliance_pact",
         "image_file": "lu_su.png"
+    },
+
+    # ==================== 袁 ====================
+    {
+        "id": 6001,
+        "name": "田丰",
+        "camp": "袁",
+        "rarity": "RARE",
+        "cost": 1.5,
+        "force": 4,
+        "intelligence": 9,
+        "attributes": ["伏兵"],
+        "skill_id": "meticulous_offense",
+        "image_file": "tian_feng.png"
     },
 ]

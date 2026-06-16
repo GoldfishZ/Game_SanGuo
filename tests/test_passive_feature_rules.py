@@ -1,0 +1,133 @@
+"""
+测试募兵、防栅、连计、复活、伏兵的新规则细节
+"""
+
+import os
+import sys
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from game_data.passive_skills_config import get_passive_skills_for_attributes
+from game_data.skills_config import get_skill_by_id
+from src.battle.battle_system import BattleContext
+from src.models.general import Attribute, Camp, General, Rarity
+from src.models.team import Team
+
+
+def make_general(name, force, intelligence, attributes=None, active_skill=None):
+    general = General(
+        general_id=1,
+        name=name,
+        camp=Camp.SHU,
+        rarity=Rarity.COMMON,
+        cost=1.0,
+        force=force,
+        intelligence=intelligence,
+        attribute=attributes or [],
+        active_skill=active_skill,
+    )
+    general.passive_skills = get_passive_skills_for_attributes(general.attribute)
+    return general
+
+
+def test_recruit_heals_each_turn_only_when_damaged():
+    general = make_general("募兵", 5, 5, [Attribute.RECRUIT])
+
+    general.trigger_turn_start_passives()
+    assert general.current_hp == general.max_hp
+
+    general.take_damage(3, damage_source="skill")
+    general.trigger_turn_start_passives()
+    assert general.current_hp == general.max_hp - 2
+
+
+def test_fence_blocks_basic_attack_then_rebuilds_after_two_turns():
+    defender = make_general("防栅", 4, 8, [Attribute.FENCE])
+    attacker = make_general("攻击者", 6, 2)
+
+    assert attacker.attack(defender) == 0
+    fence = defender.get_passive_skill("防栅")
+    assert fence.is_active is False
+    assert fence.rebuild_turns_remaining == 2
+
+    defender.update_effects()
+    assert fence.is_active is False
+    defender.update_effects()
+    assert fence.is_active is True
+
+
+def test_fence_does_not_block_skill_damage():
+    defender = make_general("防栅", 4, 8, [Attribute.FENCE])
+    attacker = make_general("攻击者", 8, 4, active_skill=get_skill_by_id("fierce_attack"))
+
+    team_a = Team("攻击队")
+    team_b = Team("防守队")
+    team_a.add_general(attacker)
+    team_b.add_general(defender)
+    result = attacker.use_active_skill([defender], BattleContext(team_a, team_b), team_a)
+
+    assert result["success"] is True
+    assert defender.current_hp < defender.max_hp
+    assert defender.get_passive_skill("防栅").is_active is True
+
+
+def test_chain_shares_effects_and_damage():
+    first = make_general("连计1", 5, 8, [Attribute.CHAIN])
+    second = make_general("连计2", 5, 8, [Attribute.CHAIN])
+    attacker = make_general("攻击者", 8, 4)
+    team = Team("连计队")
+    team.add_general(first)
+    team.add_general(second)
+
+    first.add_buff("force_boost", 2, 1)
+    assert second.buffs == first.buffs
+
+    before_first = first.current_hp
+    before_second = second.current_hp
+    first.take_damage(6, attacker, "basic_attack")
+
+    assert first.current_hp == before_first - 3
+    assert second.current_hp == before_second - 3
+
+
+def test_revive_once_at_half_hp():
+    general = make_general("复活", 3, 3, [Attribute.REVIVE])
+
+    general.take_damage(10, damage_source="skill")
+    assert general.is_alive is True
+    assert general.current_hp == 3
+
+    general.take_damage(10, damage_source="skill")
+    assert general.is_alive is False
+    assert general.current_hp == 0
+
+
+def test_ambush_is_not_basic_attack_target_and_can_intercept():
+    target = make_general("友军", 4, 4)
+    ambush = make_general("伏兵", 4, 6, [Attribute.AMBUSH])
+    attacker = make_general("攻击者", 8, 4)
+    team = Team("伏兵队")
+    team.add_general(target)
+    team.add_general(ambush)
+    team.position_general(target, 0, 0)
+    team.position_general(ambush, 1, 0)
+
+    assert ambush not in team.get_attackable_targets()
+
+    damage = attacker.attack(target)
+    assert damage == 2
+    assert target.current_hp == target.max_hp
+    assert ambush.current_hp == ambush.max_hp - 2
+    assert ambush.get_passive_skill("伏兵").is_hidden is False
+    assert team.get_general_position(ambush) == (0, 0)
+    assert team.get_general_position(target) == (1, 0)
+
+
+if __name__ == "__main__":
+    test_recruit_heals_each_turn_only_when_damaged()
+    test_fence_blocks_basic_attack_then_rebuilds_after_two_turns()
+    test_fence_does_not_block_skill_damage()
+    test_chain_shares_effects_and_damage()
+    test_revive_once_at_half_hp()
+    test_ambush_is_not_basic_attack_target_and_can_intercept()
+    print("被动特性规则测试通过")

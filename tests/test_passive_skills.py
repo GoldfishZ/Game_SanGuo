@@ -5,12 +5,13 @@
 
 import sys
 import os
+from unittest.mock import patch
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.models.general import General, Camp, Rarity, Attribute
 from src.models.team import Team
 from game_data.skills_config import get_skill_by_id
-from game_data.passive_skills_config import get_passive_skills_for_attributes
+from game_data.passive_skills_config import get_passive_skills_for_attributes, round_half_up
 
 
 def test_bravery_passive():
@@ -53,14 +54,16 @@ def test_bravery_passive():
     
     # 张任攻击目标
     original_damage = zhang_ren.calculate_damage_to(target)
-    actual_damage = zhang_ren.attack(target)
+    with patch("game_data.passive_skills_config.random.choice", return_value="odd"), \
+         patch("game_data.passive_skills_config.random.randint", return_value=3):
+        actual_damage = zhang_ren.attack(target)
     
     print(f"   基础伤害: {original_damage}")
     print(f"   实际伤害: {actual_damage}")
     print(f"   目标剩余生命: {target.current_hp}/{target.max_hp}")
     
     # 验证勇猛效果
-    expected_enhanced_damage = round(original_damage * 1.5)
+    expected_enhanced_damage = round_half_up(original_damage * 1.5)
     if actual_damage == expected_enhanced_damage:
         print("   ✅ 勇猛被动技能触发成功！")
     else:
@@ -152,6 +155,13 @@ def test_fence_passive():
     else:
         print("   ❌ 防栅被动技能未生效")
 
+    # 两个己方回合后，若武将未死，防栅重建
+    lu_su.update_effects()
+    print(f"   防栅重建倒计时: {lu_su.get_passive_skill('防栅').rebuild_turns_remaining}")
+    lu_su.update_effects()
+    print(f"   防栅重建后状态: {lu_su.get_passive_skill('防栅').is_active}")
+    assert lu_su.get_passive_skill("防栅").is_active
+
 
 def test_revive_passive():
     """测试复活被动技能"""
@@ -221,16 +231,37 @@ def test_ambush_passive():
     print(f"   伏兵隐藏状态: {ambush_general.get_passive_skill('伏兵').is_hidden}")
     print(f"   伏兵可被选中: {ambush_general.can_be_targeted_by_enemy(team_generals)}")
     
-    # 普通武将阵亡
+    # 即使只剩伏兵，也不会因普攻目标选择自动破隐
     normal_general.is_alive = False
     print(f"   普通武将阵亡后...")
     print(f"   伏兵隐藏状态: {ambush_general.get_passive_skill('伏兵').is_hidden}")
     print(f"   伏兵可被选中: {ambush_general.can_be_targeted_by_enemy(team_generals)}")
     
-    if ambush_general.can_be_targeted_by_enemy(team_generals):
-        print("   ✅ 伏兵自动破隐成功！")
+    if not ambush_general.can_be_targeted_by_enemy(team_generals):
+        print("   ✅ 伏兵隐藏时不可被普攻选中！")
     else:
-        print("   ❌ 伏兵自动破隐失败")
+        print("   ❌ 伏兵隐藏状态异常")
+
+    # 隐藏伏兵替友军承受普攻一半伤害，并破隐
+    team = Team("伏兵测试队")
+    ambush_general.is_alive = True
+    normal_general.is_alive = True
+    team.add_general(normal_general)
+    team.add_general(ambush_general)
+    team.position_general(normal_general, 0, 0)
+    team.position_general(ambush_general, 1, 0)
+    enemy = General(1009, "敌人", Camp.WEI, Rarity.COMMON, 1.0, 8, 2)
+
+    damage = enemy.attack(normal_general)
+    print(f"   伏兵替位承伤: {damage}")
+    print(f"   普通武将生命: {normal_general.current_hp}/{normal_general.max_hp}")
+    print(f"   伏兵生命: {ambush_general.current_hp}/{ambush_general.max_hp}")
+    print(f"   伏兵隐藏状态: {ambush_general.get_passive_skill('伏兵').is_hidden}")
+
+    assert damage == 3
+    assert normal_general.current_hp == normal_general.max_hp
+    assert ambush_general.current_hp == ambush_general.max_hp - 3
+    assert not ambush_general.get_passive_skill("伏兵").is_hidden
 
 
 def main():
@@ -247,13 +278,13 @@ def main():
     print("\n" + "=" * 50)
     print("✅ 被动技能系统测试完成！")
     print("📋 已实现的被动技能:")
-    print("   🔥 勇猛: 低血量时攻击伤害*1.5（判定：武力≥8→80% ≥6→60% <6→40%）")
+    print("   🔥 勇猛: 血量低于一半时，普攻猜奇偶成功则伤害*1.5")
     print("   💚 募兵: 有伤时每回合回复1点生命")
-    print("   🛡️ 防栅: 抵挡一次攻击后失效")
+    print("   🛡️ 防栅: 抵挡一次普攻，攻破后两回合重建")
     print("   ⚡ 复活: 死亡后以50%生命复活一次")
-    print("   👤 伏兵: 隐藏状态，自动破隐机制")
-    print("   💔 魅力: 死亡反弹伤害（判定：智力≥8→80% ≥6→60% <6→40%）")
-    print("   🔗 连环: 伤害分担+效果同步已集成")
+    print("   👤 伏兵: 隐藏时不可被普攻选中，可替友军承受一半普攻伤害后破隐")
+    print("   💔 魅力: 受到致命伤害时，猜奇偶成功则反弹所受伤害的一半")
+    print("   🔗 连计: 伤害分担+效果同步已集成")
 
 
 if __name__ == "__main__":

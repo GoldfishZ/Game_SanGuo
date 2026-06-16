@@ -13,7 +13,7 @@ from .generals_data import GENERALS_DATA
 
 CAMP_MAP = {
     "魏": Camp.WEI, "蜀": Camp.SHU, "吴": Camp.WU,
-    "凉": Camp.LIANG, "袁": Camp.YUAN, "他": Camp.TA,
+    "凉": Camp.LIANG, "西凉": Camp.LIANG, "袁": Camp.YUAN, "他": Camp.TA,
 }
 
 RARITY_MAP = {
@@ -24,7 +24,7 @@ RARITY_MAP = {
 ATTR_MAP = {
     "勇猛": Attribute.BRAVERY, "魅力": Attribute.CHARISMA,
     "募兵": Attribute.RECRUIT, "防栅": Attribute.FENCE,
-    "连环": Attribute.CHAIN, "复活": Attribute.REVIVE,
+    "连环": Attribute.CHAIN, "连计": Attribute.CHAIN, "复活": Attribute.REVIVE,
     "伏兵": Attribute.AMBUSH,
 }
 

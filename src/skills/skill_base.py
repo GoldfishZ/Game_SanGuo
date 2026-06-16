@@ -165,7 +165,7 @@ class DamageSkill(Skill):
             if target.is_alive:
                 # 使用新的伤害计算逻辑
                 damage = int(caster.calculate_damage_to(target) * self.damage_multiplier)
-                actual_damage = target.take_damage(damage)
+                actual_damage = target.take_damage(damage, caster, "skill")
                 total_damage += actual_damage
                 
                 results.append({

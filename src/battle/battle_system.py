@@ -138,7 +138,7 @@ class BattleSystem:
     """纯战斗逻辑引擎，所有 I/O 通过 callbacks"""
 
     def __init__(self, team1: Team, team2: Team, callbacks: BattleCallbacks,
-                 first_player_team_name: str):
+                 first_player_team_name: str, max_turns: int = 200):
         """
         初始化战斗系统
 
@@ -152,6 +152,7 @@ class BattleSystem:
         self.team2 = team2
         self.callbacks = callbacks
         self.turn_count = 0
+        self.max_turns = max_turns
         self.battle_context = BattleContext(team1, team2)
 
         # 根据队伍名确定当前操作方
@@ -164,7 +165,7 @@ class BattleSystem:
 
     def run(self) -> str:
         """运行完整战斗循环，返回胜利者的队伍名称"""
-        while not self._is_game_over():
+        while not self._is_game_over() and self.turn_count < self.max_turns:
             self._execute_turn()
         winner = self._determine_winner()
         self.callbacks.on_battle_end(winner, self.turn_count)
@@ -186,11 +187,12 @@ class BattleSystem:
 
         # 技能使用阶段
         self._execute_skill_phase()
-        if self._is_game_over():
-            return
 
         # 普攻阶段
-        self._execute_attack_phase()
+        if not self._is_game_over():
+            self._execute_attack_phase()
+
+        self._end_turn_cleanup()
         if self._is_game_over():
             return
 
@@ -357,7 +359,13 @@ class BattleSystem:
             return
 
         attacker = attackers[a_idx]
+        legal_targets = self._get_attack_targets_for_attacker(attacker)
+        if not legal_targets:
+            return
+
         target = targets[t_idx]
+        if target not in legal_targets:
+            target = legal_targets[0]
 
         # 执行攻击
         damage = attacker.attack(target)
@@ -402,9 +410,27 @@ class BattleSystem:
         """获取敌方队伍"""
         return self.team2 if self.current_side == self.team1 else self.team1
 
+    def _get_attack_targets_for_attacker(self, attacker: General) -> List[General]:
+        """根据攻击者状态获取合法普攻目标。"""
+        enemy_team = self._get_enemy_team()
+        if not attacker.has_buff_type("front_only_attack"):
+            return enemy_team.get_attackable_targets()
+
+        attacker_pos = self.current_side.get_general_position(attacker)
+        if attacker_pos is None:
+            return enemy_team.get_attackable_targets()
+
+        target = enemy_team.get_front_target_in_column(attacker_pos[1])
+        return [target] if target else []
+
     def _switch_to_next_player(self):
         """切换到下一个玩家（A-B-A-B 交替）"""
         self.current_side = self._get_enemy_team()
+
+    def _end_turn_cleanup(self):
+        """回合结束清理临时阵型等效果。"""
+        self.team1.revert_temporary_formations()
+        self.team2.revert_temporary_formations()
 
     def _is_game_over(self) -> bool:
         """检查战斗是否结束"""
@@ -413,5 +439,11 @@ class BattleSystem:
     def _determine_winner(self) -> str:
         """确定胜利者队伍名"""
         if self.team1.is_defeated():
+            return self.team2.team_name
+        if self.team2.is_defeated():
+            return self.team1.team_name
+        team1_hp = sum(g.current_hp for g in self.team1.get_alive_generals())
+        team2_hp = sum(g.current_hp for g in self.team2.get_alive_generals())
+        if team2_hp > team1_hp:
             return self.team2.team_name
         return self.team1.team_name
