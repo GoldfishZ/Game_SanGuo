@@ -228,6 +228,88 @@ def render_button(surface, x, y, w, h, text, enabled=True, hover=False):
     return pygame.Rect(x, y, w, h)
 
 
+def _wrap_text(text: str, font, max_width: int) -> List[str]:
+    """按像素宽度为中文/英文混排文本换行。"""
+    lines = []
+    current = ""
+    for char in text:
+        if char == "\n":
+            lines.append(current)
+            current = ""
+            continue
+        trial = current + char
+        if current and font.size(trial)[0] > max_width:
+            lines.append(current)
+            current = char
+        else:
+            current = trial
+    if current:
+        lines.append(current)
+    return lines
+
+
+def _draw_wrapped_text(surface, text: str, font, color, rect: pygame.Rect, line_gap: int = 6) -> int:
+    """在指定区域绘制自动换行文本，返回实际绘制到的 y 坐标。"""
+    y = rect.y
+    line_h = font.get_height() + line_gap
+    for line in _wrap_text(text, font, rect.width):
+        if y + font.get_height() > rect.bottom:
+            ellipsis = font.render("...", True, color)
+            surface.blit(ellipsis, (rect.x, max(rect.y, rect.bottom - font.get_height())))
+            return rect.bottom
+        surface.blit(font.render(line, True, color), (rect.x, y))
+        y += line_h
+    return y
+
+
+def _draw_skill_detail_panel(surface, general: General, rect: pygame.Rect, border_color):
+    from game_data.skill_details import get_skill_detail
+
+    pygame.draw.rect(surface, Colors.PANEL_BG, rect, border_radius=14)
+    pygame.draw.rect(surface, border_color, rect, 3, border_radius=14)
+
+    title_font = get_font(28)
+    label_font = get_font(19)
+    body_font = get_font(18)
+    small_font = get_font(16)
+
+    x = rect.x + 20
+    y = rect.y + 18
+    surface.blit(title_font.render(general.name, True, Colors.WHITE), (x, y))
+    y += 42
+
+    attrs = " / ".join(attr.value for attr in general.attribute) if general.attribute else "无"
+    info_lines = [
+        f"阵营 {general.camp.value}    费用 {general.cost:g}",
+        f"武力 {general.force}    智力 {general.intelligence}    生命 {general.max_hp}",
+        f"特性 {attrs}",
+    ]
+    for line in info_lines:
+        surface.blit(small_font.render(line, True, Colors.TEXT_SECONDARY), (x, y))
+        y += 25
+
+    skill = general.active_skill
+    if not skill:
+        surface.blit(label_font.render("无主动技能", True, Colors.ORANGE), (x, y + 8))
+        return
+
+    y += 10
+    pygame.draw.line(surface, border_color, (x, y), (rect.right - 20, y), 1)
+    y += 18
+    surface.blit(label_font.render(f"{skill.name}  士气 {skill.morale_cost}", True, Colors.ORANGE), (x, y))
+    y += 34
+
+    short_rect = pygame.Rect(x, y, rect.width - 40, 90)
+    y = _draw_wrapped_text(surface, skill.description, body_font, Colors.TEXT_PRIMARY, short_rect)
+    y += 14
+
+    surface.blit(label_font.render("技能逻辑", True, Colors.YELLOW), (x, y))
+    y += 30
+    detail = get_skill_detail(skill.skill_id, skill.name, skill.description)
+    detail_rect = pygame.Rect(x, y, rect.width - 40, rect.bottom - y - 20)
+    _draw_wrapped_text(surface, detail, body_font, Colors.TEXT_SECONDARY, detail_rect)
+
+
 # ==================== Pygame 主界面 ====================
 
 class PygameUI:
@@ -412,12 +494,25 @@ class PygameUI:
                 overlay = pygame.Surface((current_w, current_h), pygame.SRCALPHA)
                 overlay.fill((0, 0, 0, 190))
                 self.screen.blit(overlay, (0, 0))
-                pvw, pvh = 400, 580
-                pvx, pvy = (current_w-pvw)//2, (current_h-pvh)//2
+                pvw = min(400, max(300, current_w // 3))
+                pvh = min(580, current_h - 130)
+                detail_w = min(420, max(280, current_w - pvw - 80))
+                detail_gap = 20
+                total_preview_w = pvw + detail_gap + detail_w
+                pvx = max(20, (current_w - total_preview_w) // 2)
+                pvy = (current_h - pvh) // 2
                 pr = pygame.Rect(pvx, pvy, pvw, pvh)
+                detail_rect = pygame.Rect(pvx + pvw + detail_gap, pvy, detail_w, pvh)
                 pygame.draw.rect(self.screen, Colors.PANEL_BG, pr, border_radius=14)
-                camp_colors = {"蜀": (80,200,80), "魏": (200,80,80), "吴": (80,80,220), "他": (200,120,210)}
-                bc = camp_colors.get(preview_general.camp.value if hasattr(preview_general.camp, 'value') else "他", (200,160,50))
+                camp_colors = {
+                    "蜀": (70, 180, 90),
+                    "魏": (190, 55, 55),
+                    "吴": (70, 120, 220),
+                    "凉": (170, 140, 55),
+                    "袁": (145, 85, 200),
+                    "他": (150, 150, 160),
+                }
+                bc = camp_colors.get(preview_general.camp.value if hasattr(preview_general.camp, 'value') else "他", (150, 150, 160))
                 pygame.draw.rect(self.screen, bc, pr, 4, border_radius=14)
 
                 # 大卡图片
@@ -441,11 +536,13 @@ class PygameUI:
                 pn_bg = pygame.Surface((pvw-8, 36), pygame.SRCALPHA); pn_bg.fill((0,0,0,180))
                 self.screen.blit(pn_bg, (pvx+4, pvy+pvh-40))
                 pn_t = get_font(30).render(preview_general.name, True, Colors.WHITE)
-                self.screen.blit(pn_t, pn_t.get_rect(center=(current_w//2, pvy+pvh-22)))
+                self.screen.blit(pn_t, pn_t.get_rect(center=(pvx + pvw // 2, pvy+pvh-22)))
+
+                _draw_skill_detail_panel(self.screen, preview_general, detail_rect, bc)
 
                 # 提示
                 hint_t = get_font(18).render("双击选择 | 单击关闭预览", True, Colors.TEXT_SECONDARY)
-                self.screen.blit(hint_t, hint_t.get_rect(center=(current_w//2, pvy+pvh+20)))
+                self.screen.blit(hint_t, hint_t.get_rect(center=(pvx + total_preview_w // 2, pvy+pvh+20)))
 
             pygame.display.flip()
 
@@ -468,6 +565,8 @@ class PygameUI:
                             else:
                                 selected[preview_general.general_id] = preview_general
                             preview_general = None
+                        elif detail_rect.collidepoint(mx2, my2):
+                            pass
                         else:
                             preview_general = None  # 点外面关闭
                         continue

@@ -36,6 +36,7 @@ class Team:
         self.generals: List[General] = []
         self.max_morale = 12  # 初始士气上限为12，可以通过技能修改
         self.current_morale = 12
+        self.morale_spent = 0
         
         # 阵型系统 - 3行4列的方格 (行, 列)
         self.formation: List[List[Optional[General]]] = [[None for _ in range(4)] for _ in range(3)]
@@ -127,6 +128,20 @@ class Team:
         self.formation[first_row][first_col] = second
         self.formation[second_row][second_col] = first
         return True
+
+    def knock_back_with_rear_general(self, target: 'General') -> bool:
+        """将目标与同列后一格武将交换位置。"""
+        target_pos = self.get_general_position(target)
+        if target_pos is None:
+            return False
+        row, col = target_pos
+        rear_row = row + 1
+        if rear_row >= 3:
+            return False
+        rear_general = self.formation[rear_row][col]
+        if rear_general is None or not rear_general.is_alive:
+            return False
+        return self.swap_general_positions(target, rear_general)
 
     def resolve_ambush_interception(self, target: 'General', damage: int) -> Tuple['General', int]:
         """隐藏伏兵替友军承受普攻的一半伤害，并与目标交换位置。"""
@@ -482,6 +497,7 @@ class Team:
         if self.current_morale < amount:
             return False
         self.current_morale -= amount
+        self.morale_spent += amount
         return True
 
     def add_pending_morale_reward(

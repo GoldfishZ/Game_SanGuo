@@ -115,7 +115,7 @@ def interactive_gallery():
                 print("❌ 请输入有效的数字!")
         
         elif choice == "4":
-            name = input("\n请输入武将名称 (如: 刘备): ").strip()
+            name = input("\n请输入武将名称 (如: 张任): ").strip()
             general = game_data_manager.get_general_by_name(name.lower().replace(" ", "_"))
             if general:
                 show_camp_generals(general.camp)

@@ -56,21 +56,44 @@ def test_specific_generals():
 
     checks = [
         ("张任", "他", "COMMON", 6, 6, "伏兵", "强化战术"),
-        ("刘备", "蜀", "RARE", 5, 7, "魅力", "鼓舞"),
-        ("关羽", "蜀", "EPIC", 9, 5, "勇猛", "猛攻"),
         ("张飞", "蜀", "EPIC", 8, 4, "勇猛", "轮枪战术"),
+        ("夏侯月姬", "蜀", "COMMON", 2, 7, "魅力", "雷击"),
+        ("周仓", "蜀", "COMMON", 4, 1, "勇猛", "强化战术"),
+        ("马岱", "蜀", "RARE", 5, 7, "伏兵", "质实刚健"),
+        ("姜维", "蜀", "EPIC", 7, 7, "募兵", "挑衅"),
         ("曹操", "魏", "EPIC", 7, 9, "魅力", "全军攻城"),
         ("夏侯惇", "魏", "RARE", 8, 6, "勇猛", "魏王的卫兵"),
         ("曹仁", "魏", "RARE", 5, 6, None, "刹那的号令"),
+        ("贾诩", "魏", "COMMON", 1, 9, None, "离间谋略"),
+        ("王异", "魏", "RARE", 4, 8, ("魅力", "防栅"), "以牙还牙"),
+        ("许褚", "魏", "EPIC", 8, 2, "募兵", "防护战术"),
+        ("夏侯渊", "魏", "EPIC", 8, 4, "募兵", "神速战术"),
+        ("郭皇后", "魏", "COMMON", 2, 7, "魅力", "衰弱的连计"),
+        ("蔡文姬", "魏", "COMMON", 1, 7, "魅力", "飞天之舞"),
+        ("于禁", "魏", "RARE", 5, 6, "连计", "魏武精英"),
         ("张辽", "凉", "RARE", 7, 6, "连计", "人马一体"),
         ("吕布", "凉", "LEGENDARY", 10, 1, "勇猛", "天下无双"),
         ("董卓", "凉", "EPIC", 8, 7, "魅力", "人马大号令"),
+        ("陈宫", "凉", "RARE", 4, 7, "防栅", "破坏性的献策"),
+        ("邹氏", "凉", "COMMON", 2, 7, ("伏兵", "魅力"), "堕落之舞"),
+        ("李傕和郭汜", "凉", "RARE", 6, 3, None, "卑劣的奇袭"),
         ("诸葛亮", "蜀", "RARE", 3, 10, "防栅", "石兵八阵"),
         ("鲁肃", "吴", "RARE", 4, 8, "防栅", "同盟缔结"),
         ("大乔", "吴", "COMMON", 2, 4, ("募兵", "魅力"), "江东的大美人"),
         ("太史慈", "吴", "EPIC", 8, 4, None, "天衣无缝"),
+        ("朱然", "吴", "RARE", 4, 6, ("防栅", "募兵"), "防栅重建"),
+        ("小乔", "吴", "RARE", 2, 5, ("防栅", "魅力"), "流星的仪式"),
         ("汉献帝", "他", "COMMON", 1, 5, ("魅力", "防栅"), "敕命"),
+        ("司马徽", "他", "COMMON", 1, 8, ("防栅", "募兵"), "夫子的教诲"),
+        ("皇甫嵩", "他", "RARE", 5, 5, "募兵", "贼军讨伐令"),
+        ("公孙瓒", "他", "RARE", 5, 5, ("魅力", "募兵"), "白马阵"),
+        ("张角", "他", "COMMON", 2, 8, "魅力", "太平要术"),
+        ("带来洞主", "他", "RARE", 5, 3, "复活", "击飞战术"),
+        ("王允", "他", "COMMON", 2, 8, None, "小连环计"),
+        ("文丑", "袁", "EPIC", 8, 3, "勇猛", "士气旺盛"),
         ("田丰", "袁", "RARE", 4, 9, "伏兵", "缜密的攻势"),
+        ("于夫罗", "袁", "COMMON", 3, 3, "连计", "联合围攻"),
+        ("张郃", "袁", "RARE", 6, 5, None, "率先立功"),
     ]
 
     for name, camp, rarity, force, intelligence, attrs, skill in checks:
@@ -92,34 +115,34 @@ def test_specific_generals():
 
 
 def test_skill_independence():
-    """测试技能独立冷却"""
-    print("\n⚔️" * 20)
-    print("   测试技能独立冷却")
-    print("⚔️" * 20)
+    """Test independent cooldown for generals sharing one skill."""
+    print("\n" + "=" * 20)
+    print("   test skill independence")
+    print("=" * 20)
 
     zhang_ren = get_general_by_name("张任")
-    zhao_yun = get_general_by_name("赵云")
-    assert zhang_ren and zhao_yun, "武将创建失败"
-    assert zhang_ren.active_skill.name == zhao_yun.active_skill.name == "强化战术"
+    zhou_cang = get_general_by_name("周仓")
+    assert zhang_ren and zhou_cang, "general creation failed"
+    assert zhang_ren.active_skill.name == zhou_cang.active_skill.name == "强化战术"
 
-    team = Team("测试队伍", Camp.TA)
+    team = Team("test team", Camp.TA)
     team.add_general(zhang_ren)
-    team.add_general(zhao_yun)
+    team.add_general(zhou_cang)
 
-    print(f"\n   队伍士气: {team.current_morale}/{team.max_morale}")
-    print(f"   {zhang_ren.name} 冷却: {zhang_ren.active_skill_cooldown}")
-    print(f"   {zhao_yun.name} 冷却: {zhao_yun.active_skill_cooldown}")
+    print(f"\n   morale: {team.current_morale}/{team.max_morale}")
+    print(f"   {zhang_ren.name} cooldown: {zhang_ren.active_skill_cooldown}")
+    print(f"   {zhou_cang.name} cooldown: {zhou_cang.active_skill_cooldown}")
 
     r1 = team.use_skill(zhang_ren, [zhang_ren], {"battle_phase": "main"})
-    print(f"\n   {zhang_ren.name} 使用技能: {'成功' if r1.get('success') else '失败'}")
-    print(f"   士气: {team.current_morale}/{team.max_morale}")
+    print(f"\n   {zhang_ren.name} skill: {'success' if r1.get('success') else 'failed'}")
+    print(f"   morale: {team.current_morale}/{team.max_morale}")
 
-    r2 = team.use_skill(zhao_yun, [zhao_yun], {"battle_phase": "main"})
-    print(f"   {zhao_yun.name} 使用技能: {'成功' if r2.get('success') else '失败'}")
-    print(f"   士气: {team.current_morale}/{team.max_morale}")
+    r2 = team.use_skill(zhou_cang, [zhou_cang], {"battle_phase": "main"})
+    print(f"   {zhou_cang.name} skill: {'success' if r2.get('success') else 'failed'}")
+    print(f"   morale: {team.current_morale}/{team.max_morale}")
 
-    assert r1.get("success") and r2.get("success"), "两个武将应都能使用技能"
-    print("\n   ✅ 同技能不同武将独立冷却正常")
+    assert r1.get("success") and r2.get("success"), "both generals should be able to use the shared skill"
+    print("   ok: shared skill cooldown is independent")
 
 
 def test_team_morale_limit():
@@ -143,44 +166,38 @@ def test_team_morale_limit():
 
 
 def test_chain_integration():
-    """测试连环被动技能：伤害分担"""
-    print("\n🔗" * 20)
-    print("   测试连环被动技能集成")
-    print("🔗" * 20)
+    """Test chain passive damage sharing."""
+    print("\n" + "=" * 20)
+    print("   test chain passive")
+    print("=" * 20)
 
-    # 周瑜有连环/连计属性
-    chain_general_1 = get_general_by_name("周瑜")
-    chain_general_2 = get_general_by_name("周瑜")
+    chain_general_1 = get_general_by_name("张辽")
+    chain_general_2 = get_general_by_name("于禁")
     assert chain_general_1 and chain_general_2
 
-    team = Team("测试连环队伍", Camp.SHU)
+    team = Team("chain test team", Camp.SHU)
     team.add_general(chain_general_1)
     team.add_general(chain_general_2)
 
-    # 放置到阵型
     team.position_general(chain_general_1, 0, 0)
     team.position_general(chain_general_2, 0, 1)
 
-    # 两人都有连环
     assert chain_general_1.has_passive_skill("连环")
     assert chain_general_2.has_passive_skill("连环")
 
     hp_before = chain_general_2.current_hp
-    print(f"   攻击前: 周瑜1 HP={chain_general_1.current_hp}/{chain_general_1.max_hp}, "
-          f"周瑜2 HP={chain_general_2.current_hp}/{chain_general_2.max_hp}")
+    print(f"   before: chain1 HP={chain_general_1.current_hp}/{chain_general_1.max_hp}, "
+          f"chain2 HP={chain_general_2.current_hp}/{chain_general_2.max_hp}")
 
-    # 创建攻击者
-    from src.models.general import General, Attribute
-    attacker = General(9999, "测试攻击者", Camp.WEI, Rarity.COMMON, 1.0, 10, 5)
+    from src.models.general import General
+    attacker = General(9999, "test attacker", Camp.WEI, Rarity.COMMON, 1.0, 10, 5)
     attacker.attack(chain_general_1)
 
-    print(f"   攻击后: 周瑜1 HP={chain_general_1.current_hp}/{chain_general_1.max_hp}, "
-          f"周瑜2 HP={chain_general_2.current_hp}/{chain_general_2.max_hp}")
+    print(f"   after: chain1 HP={chain_general_1.current_hp}/{chain_general_1.max_hp}, "
+          f"chain2 HP={chain_general_2.current_hp}/{chain_general_2.max_hp}")
 
-    # 周瑜2 也应该受到伤害（连环分担）
-    assert chain_general_2.current_hp < hp_before, \
-        f"连环分担失败：周瑜2 HP应由{hp_before}减少"
-    print("   ✅ 连环伤害分担成功！")
+    assert chain_general_2.current_hp < hp_before,         f"chain sharing failed: chain2 HP should drop from {hp_before}"
+    print("   ok: chain damage sharing works")
 
 
 if __name__ == "__main__":

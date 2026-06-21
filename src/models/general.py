@@ -126,9 +126,11 @@ class General:
         self.buffs: List[Dict] = []  # 增益效果
         self.debuffs: List[Dict] = []  # 减益效果
         self.pending_buffs: List[Dict] = []  # 延迟生效的增益效果
+        self.pending_debuffs: List[Dict] = []  # 延迟生效的减益效果
         
         # 技能冷却管理
         self.active_skill_cooldown = 0  # 主动技能当前冷却时间
+        self.active_skill_usage_counts = {}  # 主动技能使用次数（按武将实例记录）
         self.last_attack_speed_judgment = None
 
         # 所属队伍弱引用（由 Team.add_general 设置，用于连环等需要团队信息的被动技能）
@@ -164,6 +166,15 @@ class General:
             actual_damage = fence_passive.trigger_on_receive_damage(
                 self, actual_damage, damage_source
             )
+
+        # 护盾在防栅之后结算，避免被完全抵挡的普攻消耗护盾。
+        if actual_damage > 0:
+            for index, buff in enumerate(self.buffs):
+                if buff.get("type") == "damage_shield":
+                    shield_value = max(0, int(buff.get("value", 0)))
+                    actual_damage = max(0, actual_damage - shield_value)
+                    del self.buffs[index]
+                    break
         
         # 触发连环被动技能（伤害分担）
         if self.has_chain_passive():
@@ -298,8 +309,17 @@ class General:
         """
         if not self.is_alive or not target.is_alive:
             return 0
+        forced_target = self.get_forced_attack_target()
+        if forced_target is not None and target is not forced_target:
+            return 0
         if self.has_buff_type("front_only_attack") and not self.can_attack_front_target(target):
             return 0
+        if self.has_debuff_type("attack_speed_required"):
+            self.consume_debuff_type("attack_speed_required")
+            judgment = odd_even_judgment()
+            self.last_attack_speed_judgment = judgment
+            if not judgment["success"]:
+                return 0
 
         actual_damage = self._perform_basic_attack_once(target)
 
@@ -328,6 +348,13 @@ class General:
             )
         
         actual_damage = target.take_damage(damage, self, "basic_attack")
+        if (
+            actual_damage > 0
+            and self.has_buff_type("knockback_on_damage")
+            and target.is_alive
+            and target._team
+        ):
+            target._team.knock_back_with_rear_general(target)
         
         return actual_damage
     
@@ -348,9 +375,20 @@ class General:
             'duration': duration,
             'delay_turns': max(1, delay_turns),
         })
+
+    def add_pending_debuff(self, debuff_type: str, value: int, duration: int, delay_turns: int):
+        """添加一个延迟生效的减益效果。"""
+        self.pending_debuffs.append({
+            'type': debuff_type,
+            'value': value,
+            'duration': duration,
+            'delay_turns': max(1, delay_turns),
+        })
     
     def add_debuff(self, debuff_type: str, value: int, duration: int):
         """添加减益效果"""
+        if self.has_buff_type("debuff_immunity"):
+            return
         self.debuffs.append({
             'type': debuff_type,
             'value': value,
@@ -370,6 +408,18 @@ class General:
                 return True
         return False
 
+    def has_debuff_type(self, debuff_type: str) -> bool:
+        """检查当前是否拥有指定类型的减益状态。"""
+        return any(debuff.get('type') == debuff_type for debuff in self.debuffs)
+
+    def consume_debuff_type(self, debuff_type: str) -> bool:
+        """消耗一个指定类型的减益状态。"""
+        for index, debuff in enumerate(self.debuffs):
+            if debuff.get('type') == debuff_type:
+                del self.debuffs[index]
+                return True
+        return False
+
     def share_damage_with_cao_guard(self, damage: int, attacker: 'General' = None) -> int:
         """曹操受伤时，由同队存活的夏侯惇常驻承担一半伤害。"""
         if self.name != "曹操" or not self._team or damage <= 0:
@@ -385,6 +435,15 @@ class General:
                 return remaining_damage
 
         return damage
+
+    def get_forced_attack_target(self):
+        """Return the living target this general must attack, if taunted."""
+        for debuff in self.debuffs:
+            if debuff.get("type") == "forced_attack_target":
+                target = debuff.get("value")
+                if target is not None and getattr(target, "is_alive", False):
+                    return target
+        return None
 
     def can_attack_front_target(self, target: 'General') -> bool:
         """攻城状态下只能攻击正前方同列且可被普攻选中的武将。"""
@@ -410,6 +469,7 @@ class General:
             debuff['duration'] -= 1
 
         self.activate_pending_buffs()
+        self.activate_pending_debuffs()
 
         # 更新主动技能冷却
         if self.active_skill_cooldown > 0:
@@ -437,6 +497,21 @@ class General:
             else:
                 remaining_pending_buffs.append(pending)
         self.pending_buffs = remaining_pending_buffs
+
+    def activate_pending_debuffs(self):
+        """将到期的延迟减益加入当前减益列表。"""
+        remaining_pending_debuffs = []
+        for pending in self.pending_debuffs:
+            pending['delay_turns'] -= 1
+            if pending['delay_turns'] <= 0:
+                self.add_debuff(
+                    pending['type'],
+                    pending['value'],
+                    pending['duration'],
+                )
+            else:
+                remaining_pending_debuffs.append(pending)
+        self.pending_debuffs = remaining_pending_debuffs
     
     def trigger_turn_start_passives(self):
         """触发回合开始时的被动技能"""
@@ -536,6 +611,9 @@ class General:
         
         if not self.active_skill:
             return {"success": False, "message": "没有主动技能"}
+
+        if hasattr(self.active_skill, "can_use") and not self.active_skill.can_use(self, team):
+            return {"success": False, "message": "技能无法使用"}
         
         # 如果有队伍对象，检查并消耗士气
         if team is not None:
