@@ -165,23 +165,17 @@ class GameFlowController:
         print(self.player2.team.get_formation_display())
 
     def _generate_general_pool(self):
-        """生成15位武将的选择池"""
+        """生成15位武将的选择池（不重复）"""
         print("🎲 正在生成武将池...")
 
-        # 获取所有可用武将
         all_generals_creators = list(GENERAL_CREATORS.values())
+        n = min(15, len(all_generals_creators))
+        selected_creators = random.sample(all_generals_creators, n)
 
-        # 随机选择15位武将（有重复的话就扩展池子）
-        selected_creators = []
-        for _ in range(15):
-            creator = random.choice(all_generals_creators)
-            selected_creators.append(creator)
-
-        # 创建武将实例
         self.general_pool = []
         for i, creator in enumerate(selected_creators):
             general = creator()
-            general.pool_index = i + 1  # 添加池子中的编号
+            general.pool_index = i + 1
             self.general_pool.append(general)
 
         print(f"✅ 已生成包含{len(self.general_pool)}位武将的选择池")

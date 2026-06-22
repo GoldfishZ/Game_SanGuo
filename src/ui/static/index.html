@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>三国武将卡牌游戏</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<script>window.gsap = window.gsap || null; if(!window.gsap) console.warn('GSAP unavailable, using CSS fallback');</script>
+<style>
+:root{--bg:#0b0906;--panel:#1a1410;--gold:#c9a84c;--gold-bright:#e4c060;
+  --text:#d4c4a8;--muted:#8a7a5a;--border:#342c20;--shu:#5b8c5a;--wei:#4a6fa5;
+  --wu:#a0524d;--other:#7b5ea7;}
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{width:100%;height:100%;overflow-x:hidden}
+body{background:var(--bg);color:var(--text);font-family:"Noto Serif SC","SimSun",serif;}
+h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
+  text-shadow:0 2px 16px rgba(180,150,80,.25);margin:20px 0 6px;text-align:center}
+.sub{font-size:clamp(11px,2vw,13px);color:var(--muted);letter-spacing:.1em;margin-bottom:24px;text-align:center}
+
+/* Full-viewport app container */
+#app{width:100%;min-height:100vh;display:flex;flex-direction:column}
+
+/* Screen containers — fill viewport, center content */
+.screen{display:none;animation:fadeIn .3s;flex:1;width:100%;padding:20px clamp(12px,3vw,40px)}
+.screen.active{display:flex;flex-direction:column}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+
+/* Content wrapper — centered with reasonable max-width for readability */
+.screen-inner{width:100%;max-width:1300px;margin:0 auto;flex:1;display:flex;flex-direction:column}
+
+/* Background images per screen — full viewport cover */
+#scr-menu{background:linear-gradient(0deg,rgba(0,0,0,.65),rgba(0,0,0,.45)),url(/backgrounds/starting_menu.png) center/cover no-repeat fixed}
+#scr-select{background:linear-gradient(0deg,rgba(0,0,0,.7),rgba(0,0,0,.55)),url(/backgrounds/choosing_general.png) center/cover no-repeat fixed}
+#scr-rules{background:linear-gradient(0deg,rgba(0,0,0,.6),rgba(0,0,0,.4)),url(/backgrounds/rules_introduction.png) center/cover no-repeat fixed}
+#scr-gallery{background:linear-gradient(0deg,rgba(0,0,0,.7),rgba(0,0,0,.55)),url(/backgrounds/showing_general.png) center/cover no-repeat fixed}
+.screen{background-color:var(--bg)}
+
+/* ===== Menu ===== */
+.menu-wrap{display:flex;flex-direction:column;align-items:center;justify-content:center;flex:1;gap:clamp(8px,1.5vh,14px)}
+.menu-title{font-size:clamp(26px,5vw,42px);color:var(--gold);letter-spacing:.14em;text-shadow:0 2px 16px rgba(180,150,80,.25);text-align:center}
+.menu-sub{font-size:clamp(11px,2vw,14px);color:var(--muted);letter-spacing:.1em;text-align:center;margin-bottom:clamp(8px,1.5vh,16px)}
+
+/* ===== Buttons ===== */
+.btn{
+  display:inline-block;padding:clamp(8px,1.5vh,14px) clamp(16px,2.5vw,36px);text-align:center;
+  background:linear-gradient(180deg,#2d2218,#1c1610);
+  border:1px solid #544430;border-radius:clamp(4px,.5vw,6px);
+  color:var(--gold);font-size:clamp(13px,1.8vw,18px);letter-spacing:.1em;
+  cursor:pointer;transition:all .15s;position:relative;
+  margin:clamp(2px,.4vw,6px);
+}
+.btn:hover{background:linear-gradient(180deg,#3d2e1e,#281e14);border-color:var(--gold);color:var(--gold-bright)}
+.btn.primary{background:linear-gradient(180deg,#3d2a18,#281a10);border-color:var(--gold)}
+.btn.danger{color:#a0524d;border-color:#5a3030}
+.btn.danger:hover{color:#c07070;border-color:#a0524d}
+.btn:disabled{opacity:.4;cursor:default;pointer-events:none}
+
+/* ===== Cards ===== */
+.card-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(clamp(120px,15vw,200px),1fr));gap:clamp(6px,1vw,14px);margin:clamp(8px,1.5vh,16px) 0;}
+.card{
+  background:var(--panel);border:1px solid var(--border);border-radius:clamp(6px,.8vw,10px);
+  aspect-ratio:2/3;position:relative;overflow:hidden;cursor:pointer;transition:all .15s;
+  max-width:220px;
+}
+.card:hover{border-color:var(--gold);transform:translateY(-2px)}
+.card.selected{border:2px solid var(--gold);box-shadow:0 0 14px rgba(190,160,70,.22)}
+.card img{width:100%;height:100%;object-fit:contain;background:var(--bg);image-rendering:auto}
+.card .badge{
+  position:absolute;top:clamp(3px,.4vw,6px);right:clamp(3px,.4vw,6px);
+  width:clamp(16px,2vw,24px);height:clamp(16px,2vw,24px);border-radius:50%;
+  background:var(--shu);color:#fff;font-size:clamp(9px,1.1vw,13px);
+  display:flex;align-items:center;justify-content:center;font-weight:700;
+}
+
+/* ===== Formation ===== */
+.form-layout{display:flex;gap:clamp(8px,2vw,20px);margin:clamp(8px,1.5vh,16px) 0;flex:1}
+.form-sidelist{width:clamp(140px,18vw,220px);background:var(--panel);border:1px solid var(--border);
+  border-radius:6px;padding:clamp(6px,1vw,10px);max-height:none;overflow-y:auto;flex-shrink:0}
+.form-sidelist .gi{padding:clamp(6px,.8vh,10px) clamp(6px,1vw,12px);margin-bottom:4px;border-radius:4px;
+  background:#1c1610;border:1px solid #281e14;cursor:pointer;font-size:clamp(11px,1.3vw,15px);transition:all .12s}
+.form-sidelist .gi:hover{border-color:var(--gold)}
+.form-sidelist .gi.active{background:#2d2218;border-color:var(--gold)}
+.form-grid{display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(3,1fr);gap:clamp(4px,.6vw,8px);flex:1}
+.form-cell{
+  background:var(--panel);border:1px dashed var(--border);border-radius:6px;
+  display:flex;align-items:center;justify-content:center;
+  font-size:clamp(10px,1.2vw,14px);color:#5a4e3a;min-height:clamp(60px,12vh,100px);cursor:pointer;transition:all .12s;
+}
+.form-cell:hover{border-color:var(--gold)}
+.form-cell.filled{border-style:solid;border-color:#3a3020;color:var(--gold);font-size:clamp(13px,1.6vw,18px);font-weight:600}
+.form-cell.droptarget{border-color:var(--gold);background:#2d2218}
+
+/* ===== Battle ===== */
+.battle{display:flex;gap:clamp(12px,2.5vw,30px);margin:clamp(6px,1vh,16px) 0;flex:1}
+.bside{flex:1;display:flex;flex-direction:column}
+.bside h3{font-size:clamp(11px,1.4vw,16px);color:var(--muted);margin-bottom:4px;text-align:center}
+.bgrid{display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(3,1fr);gap:clamp(3px,.5vw,6px);flex:1}
+.bcell{background:var(--panel);border:1px solid var(--border);border-radius:5px;
+  padding:clamp(2px,.3vw,6px);min-height:clamp(50px,14vh,90px);position:relative;overflow:hidden;cursor:pointer;transition:all .12s}
+.bcell:hover{border-color:var(--gold);box-shadow:0 0 6px rgba(190,150,60,.18)}
+.bcell.selected{border:2px solid var(--gold);box-shadow:0 0 12px rgba(190,150,60,.3)}
+.bcell .cname{font-size:clamp(9px,1.1vw,13px);color:var(--text);text-align:center;margin-top:2px}
+.bcell .chp{font-size:clamp(8px,1vw,11px);color:var(--muted);text-align:center}
+.bcell .hpbar{position:absolute;bottom:2px;left:3px;right:3px;height:3px;
+  background:#281e14;border-radius:1px;overflow:hidden}
+.bcell .hpf{height:100%;background:var(--shu);border-radius:1px}
+.bcell .hpf.warn{background:var(--gold)}.bcell .hpf.danger{background:var(--wu)}
+.bcell img{width:100%;height:60%;object-fit:contain;border-radius:2px;image-rendering:auto}
+
+/* ===== Bamboo ===== */
+.bamboo{
+  background:linear-gradient(180deg,#decba6,#d4be94 50%,#c8b088);
+  border-radius:5px;padding:clamp(16px,2.5vw,28px);border:3px solid #8a6a3a;
+  box-shadow:inset 0 0 50px rgba(0,0,0,.10),2px 2px 12px rgba(0,0,0,.35);
+  max-width:clamp(440px,60vw,760px);margin:0 auto;flex:1;display:flex;flex-direction:column
+}
+.bamboo h2{text-align:center;font-size:clamp(16px,2.2vw,24px);color:#2a1408;letter-spacing:.25em;margin-bottom:clamp(8px,1.5vh,16px)}
+.bamboo .rule{margin-bottom:clamp(8px,1.5vh,16px);border-left:3px solid #8a6a3a;padding-left:clamp(6px,1vw,12px)}
+.bamboo .rule h3{font-size:clamp(11px,1.4vw,15px);color:#2a1408;margin-bottom:1px}
+.bamboo .rule p{font-size:clamp(10px,1.2vw,13px);color:#4a2a10;line-height:1.5}
+
+/* ===== Gallery ===== */
+.gallery-card{width:clamp(180px,25vw,320px);max-width:320px}
+
+/* ===== Misc responsive ===== */
+.status{font-size:clamp(12px,1.5vw,16px)}
+.morale{font-size:clamp(11px,1.3vw,14px)}
+.overlay .pname{font-size:clamp(18px,2.5vw,28px)}
+
+/* ===== Gallery ===== */
+.gallery-wrap{text-align:center;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center}
+.gallery-card{
+  display:inline-block;width:clamp(180px,25vw,320px);background:var(--panel);
+  border:3px solid var(--gold);border-radius:12px;overflow:hidden;margin:clamp(8px,1.5vh,16px) 0;
+}
+.gallery-card img{width:100%;display:block}
+.gallery-card .gn{text-align:center;padding:clamp(6px,.8vh,10px);font-size:clamp(16px,2.2vw,26px);color:var(--gold);background:rgba(0,0,0,.6)}
+.gallery-bio{font-size:clamp(11px,1.3vw,15px);color:var(--muted);max-width:clamp(260px,35vw,400px);margin:clamp(6px,1vh,12px) auto;line-height:1.7;
+  background:rgba(0,0,0,.4);padding:clamp(10px,1.5vw,16px);border-radius:8px;}
+.gallery-nav{display:flex;justify-content:center;gap:clamp(16px,3vw,28px);margin:clamp(6px,1vh,12px)}
+.gallery-nav .nav-btn{width:clamp(28px,4vw,40px);height:clamp(28px,4vw,40px);border-radius:50%;background:var(--panel);
+  border:1px solid var(--border);color:var(--gold);cursor:pointer;
+  display:flex;align-items:center;justify-content:center;font-size:clamp(14px,1.8vw,20px)}
+.gallery-nav .nav-btn:hover{border-color:var(--gold);background:#2d2218}
+
+/* Filter dropdowns */
+.filter-row{display:flex;justify-content:center;gap:clamp(8px,1.5vw,16px);margin:clamp(6px,1vh,12px) 0}
+.dropdown{position:relative}
+.dropdown-btn{padding:clamp(3px,.5vh,6px) clamp(10px,1.5vw,16px);border-radius:3px;font-size:clamp(10px,1.3vw,14px);
+  background:var(--panel);border:1px solid var(--border);color:var(--muted);cursor:pointer}
+.dropdown-btn:hover{border-color:var(--gold)}
+.dropdown-menu{display:none;position:absolute;top:100%;left:0;z-index:10;
+  background:var(--panel);border:1px solid var(--border);border-radius:6px;padding:4px;min-width:clamp(80px,12vw,120px)}
+.dropdown.open .dropdown-menu{display:block}
+.dropdown-menu .opt{padding:clamp(3px,.4vh,6px) clamp(6px,1vw,12px);border-radius:3px;font-size:clamp(10px,1.2vw,13px);cursor:pointer;color:var(--muted)}
+.dropdown-menu .opt:hover{background:#2d2218;color:var(--text)}
+.dropdown-menu .opt.active{color:var(--gold)}
+
+/* ===== Misc responsive ===== */
+.status{font-size:clamp(12px,1.5vw,16px)}
+.morale{font-size:clamp(11px,1.3vw,14px)}
+.overlay .pname{font-size:clamp(18px,2.5vw,28px)}
+#sel-pool-area{min-height:clamp(50px,8vh,80px)}
+
+/* ===== Dice ===== */
+.dice-wrap{text-align:center;padding:40px 0}
+.dice{display:inline-block;font-size:72px;margin:0 30px}
+.dice.p1{color:#c07070}.dice.p2{color:#4a6fa5}
+.dice-label{font-size:14px;color:var(--muted);margin-top:4px}
+
+/* ===== Overlay / Preview ===== */
+.overlay{
+  position:fixed;top:0;left:0;right:0;bottom:0;
+  background:rgba(0,0,0,.85);z-index:100;
+  display:flex;align-items:center;justify-content:center;
+}
+.overlay .preview-card{background:var(--panel);border:3px solid var(--gold);
+  border-radius:14px;padding:16px;text-align:center;max-width:90vw}
+.overlay .preview-card img{max-height:70vh;max-width:80vw;object-fit:contain}
+.overlay .preview-card .pname{font-size:24px;color:var(--gold);margin-top:8px}
+.overlay .close{position:absolute;top:20px;right:30px;font-size:28px;color:var(--muted);cursor:pointer}
+
+/* ===== Status bar ===== */
+.status{text-align:center;padding:8px;font-size:13px;color:var(--gold);margin:8px 0}
+.morale{text-align:center;font-size:12px;color:var(--muted);margin:4px 0}
+.morale span{color:var(--gold)}
+.morale-bar{display:inline-block;width:120px;height:6px;background:#281e14;border-radius:3px;overflow:hidden;vertical-align:middle;margin:0 6px}
+.morale-bar .fill{height:100%;background:var(--gold);border-radius:3px}
+
+/* ===== Toolbar ===== */
+.toolbar{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin:8px 0}
+
+/* Responsive tweaks for very narrow screens */
+@media(max-width:700px){
+  .card-grid{grid-template-columns:repeat(3,1fr)}
+  .form-layout{flex-direction:column}.form-sidelist{width:100%;max-height:150px}
+  .battle{flex-direction:column}
+  .bamboo{max-width:100%}
+}
+
+/* ===== Combat Effects (GSAP-driven) ===== */
+@keyframes screenShake{0%,100%{transform:translate(0,0)}10%{transform:translate(-8px,3px)}30%{transform:translate(6px,-4px)}50%{transform:translate(-4px,-2px)}70%{transform:translate(3px,5px)}90%{transform:translate(-1px,-3px)}}
+@keyframes attackDash{0%{transform:translateX(0) scale(1)}40%{transform:translateX(25px) scale(1.12)}100%{transform:translateX(0) scale(1)}}
+@keyframes floatUp{0%{opacity:1;transform:translateY(0) scale(.8)}30%{opacity:1;transform:translateY(-20px) scale(1.2)}100%{opacity:0;transform:translateY(-50px) scale(1.5)}}
+@keyframes pulse{0%,100%{filter:brightness(1)}50%{filter:brightness(1.8) saturate(2)}}
+@keyframes skillBurst{0%{opacity:0;transform:scale(.3)}40%{opacity:1;transform:scale(1.3)}100%{opacity:0;transform:scale(2)}}
+.shaking{animation:screenShake .5s ease-out}
+.flash-pulse{animation:pulse .3s ease-out}
+.attacking{animation:attackDash .35s ease-out;z-index:5}
+.float-num{position:absolute;font-weight:900;font-size:clamp(14px,2vw,22px);pointer-events:none;z-index:60;
+  text-shadow:0 0 6px rgba(0,0,0,.9),0 2px 4px rgba(0,0,0,.6);animation:floatUp 1.2s ease-out forwards}
+.float-num.damage{color:#ff4040}.float-num.heal{color:#40e040}.float-num.buff{color:#ffb840}.float-num.debuff{color:#c080ff}
+.skill-burst{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  font-size:clamp(13px,1.8vw,18px);font-weight:900;color:#ffb840;pointer-events:none;z-index:60;
+  text-shadow:0 0 16px rgba(255,180,60,.9);animation:skillBurst 1.5s ease-out forwards;white-space:nowrap;}
+.morale-bar .fill{transition:width .5s cubic-bezier(.34,1.56,.64,1)}
+</style>
+</head>
+<body>
+
+<div id="app">
+  <!-- Screen 1: Menu -->
+  <div id="scr-menu" class="screen active">
+    <div class="menu-wrap">
+    <div class="menu-title">三国武将卡牌游戏</div>
+    <div class="menu-sub">霸·三国志大战 · 卡牌对战</div>
+    <div style="text-align:center">
+      <div class="btn primary" onclick="startGame()">开 始 游 戏</div>
+      <br>
+      <div class="btn" onclick="showScreen('rules')">规 则 介 绍</div>
+      <div class="btn" onclick="showScreen('gallery')">武 将 展 示</div>
+    </div>
+    <div style="text-align:center;margin-top:clamp(12px,2vh,20px);font-size:clamp(9px,1vw,11px);color:#4a3e2c">40位武将 · 30+技能 · 7种被动属性</div>
+    </div>
+  </div>
+
+  <!-- Screen 2: Select -->
+  <div id="scr-select" class="screen">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2 id="sel-title" style="color:var(--gold);margin-bottom:4px">玩家1 — 选择武将</h2>
+      <span style="font-size:10px;color:var(--muted)">单击卡牌查看详情 · 点击预览中的按钮加入/移出选将池</span>
+    </div>
+    <!-- 已选池子 -->
+    <div id="sel-pool-area" style="min-height:70px;background:rgba(200,170,70,.05);border:2px dashed var(--gold);border-radius:8px;padding:8px;margin:8px 0;display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+      <span id="sel-pool-empty" style="font-size:11px;color:var(--muted);padding:4px 12px">选将池 — 点击武将卡预览后「加入选将池」</span>
+    </div>
+    <!-- 武将卡列表 -->
+    <div id="sel-cards" class="card-grid"></div>
+    <div class="toolbar">
+      <div class="btn primary" id="sel-done" onclick="confirmSelection()" disabled>完成选择</div>
+    </div>
+  </div>
+
+  <!-- Screen 3: Formation -->
+  <div id="scr-formation" class="screen">
+    <h2 id="form-title" style="color:var(--gold);margin-bottom:4px">玩家1 — 布置阵型</h2>
+    <div class="form-layout">
+      <div class="form-sidelist" id="form-list"></div>
+      <div class="form-grid" id="form-grid"></div>
+    </div>
+    <div class="toolbar">
+      <div class="btn primary" id="form-done" onclick="confirmFormation()">完成布置</div>
+    </div>
+    <div id="form-hint" style="font-size:12px;color:var(--muted);text-align:center"></div>
+  </div>
+
+  <!-- Screen 4: Dice -->
+  <div id="scr-dice" class="screen">
+    <div class="dice-wrap">
+      <div class="dice p1" id="d1">?</div><div class="dice-label">玩家1</div>
+      <div class="dice p2" id="d2">?</div><div class="dice-label">玩家2</div>
+    </div>
+    <div class="status" id="dice-result"></div>
+    <div style="text-align:center"><div class="btn primary" onclick="rollDice()">掷骰子</div></div>
+  </div>
+
+  <!-- Screen 5: Battle -->
+  <div id="scr-battle" class="screen">
+    <div style="text-align:center;margin:4px 0">
+      <span id="bturn" style="font-size:15px;color:var(--gold)">第1回合 — 玩家1</span>
+      <span id="bphase" class="phase-tag ph-skill" style="margin-left:8px">技能阶段</span>
+    </div>
+    <div class="morale">
+      <span id="m1name">玩家1</span>
+      <span class="morale-bar"><span class="fill" id="m1fill" style="width:100%"></span></span>
+      <span id="m1text">12/12</span>
+      &nbsp;&nbsp;
+      <span id="m2name">玩家2</span>
+      <span class="morale-bar"><span class="fill" id="m2fill" style="width:100%"></span></span>
+      <span id="m2text">12/12</span>
+    </div>
+    <div class="battle">
+      <div class="bside" id="bside1"></div>
+      <div class="bside" id="bside2"></div>
+    </div>
+    <div class="status" id="battle-status">—— 战斗开始 ——</div>
+    <div class="phase-bar"><div class="phase-tag ph-skill">技能阶段</div></div>
+    <div class="toolbar" id="battle-actions">
+      <div class="btn primary" id="bact-skill" onclick="useSkill()">使用技能</div>
+      <div class="btn" id="bact-skip" onclick="skipPhase()">跳过</div>
+    </div>
+  </div>
+
+  <!-- Screen 6: Rules -->
+  <div id="scr-rules" class="screen">
+    <div class="bamboo">
+      <h2>游 戏 规 则</h2>
+      <div class="rule"><h3>阵型</h3><p>3行×4列方格，前列武将挡住后列。敌方只能攻击最前排武将。</p></div>
+      <div class="rule"><h3>伤害</h3><p>攻击方武力>目标武力: 伤害=武力差。攻击方武力≤目标武力: 伤害=min(3,(武力+智力)差)，最低1点。</p></div>
+      <div class="rule"><h3>士气</h3><p>初始12点，共用士气池。技能消耗士气。后手士气上限+2。</p></div>
+      <div class="rule"><h3>回合</h3><p>先手→后手交替。每回合: ①技能使用阶段→②普攻阶段。</p></div>
+      <div class="rule"><h3>七大被动</h3><p>勇猛(低血量×1.5) | 魅力(反弹伤害) | 募兵(回合回复) | 防栅(挡一次) | 连环(分担) | 复活(50%HP) | 伏兵(隐身)</p></div>
+      <div class="rule"><h3>胜利</h3><p>一方全体武将阵亡则游戏结束。</p></div>
+    </div>
+    <div style="text-align:center;margin-top:12px"><div class="btn" onclick="showScreen('menu')">返回主菜单</div></div>
+  </div>
+
+  <!-- Screen 7: Gallery -->
+  <div id="scr-gallery" class="screen">
+    <h2 style="text-align:center;color:var(--gold);margin-bottom:6px">武将展示</h2>
+    <div class="filter-row">
+      <div class="dropdown" id="dd-camp"><div class="dropdown-btn" onclick="toggleDropdown('dd-camp')">势力▾</div>
+        <div class="dropdown-menu" id="dm-camp"></div></div>
+      <div class="dropdown" id="dd-attr"><div class="dropdown-btn" onclick="toggleDropdown('dd-attr')">属性▾</div>
+        <div class="dropdown-menu" id="dm-attr"></div></div>
+    </div>
+    <div id="gallery-content" class="gallery-wrap"></div>
+    <div style="text-align:center;margin-top:12px"><div class="btn" onclick="showScreen('menu')">返回主菜单</div></div>
+  </div>
+
+  <!-- Screen 8: Game Over -->
+  <div id="scr-over" class="screen">
+    <h2 style="text-align:center;color:var(--gold);font-size:28px;margin:40px 0">战斗结束</h2>
+    <div class="status" id="over-winner" style="font-size:22px"></div>
+    <div class="status" id="over-stats" style="font-size:14px;color:var(--muted)"></div>
+    <div style="text-align:center"><div class="btn primary" onclick="showScreen('menu')">返回主菜单</div></div>
+  </div>
+</div>
+
+<!-- Particle canvas -->
+<canvas id="fx-canvas" style="position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:50"></canvas>
+
+<!-- Preview overlay -->
+<div id="preview" class="overlay" style="display:none" onclick="closePreview()">
+  <div class="close">✕</div>
+  <div class="preview-card" onclick="event.stopPropagation()">
+    <img id="preview-img" src="">
+    <div class="pname" id="preview-name"></div>
+    <div style="margin-top:8px;font-size:13px;color:var(--muted)" id="preview-info"></div>
+  </div>
+</div>
+
+<script>
+// ===== STATE =====
+let G = null;
+let selectedGenerals = [];
+let selectedFormGen = null;
+let battlePhase = "skill";
+let selectedAttacker = null;
+let galleryIdx = 0;
+let galleryFiltered = [];
+
+// ===== API =====
+let SERVER_OK = false;
+
+async function api(method, path, body) {
+  try {
+    let opts = {method: method || "GET", headers: {"Content-Type":"application/json"}};
+    if (body) { opts.body = JSON.stringify(body); opts.method = "POST"; }
+    let r = await fetch(path, opts);
+    if (!r.ok) throw new Error("HTTP "+r.status);
+    let data = await r.json();
+    SERVER_OK = true;
+    return data;
+  } catch(e) {
+    console.error("API error:", path, e);
+    if (!SERVER_OK) {
+      document.body.innerHTML = `<div style="padding:40px;text-align:center;color:#c07070">
+        <h2>无法连接到游戏服务器</h2>
+        <p>请先运行: <code style="background:#1a1410;padding:6px 12px;border-radius:4px">python main_web.py</code></p>
+        <p style="color:#8a7a5a;margin-top:12px">然后访问 <code>http://localhost:8080</code></p>
+      </div>`;
+    }
+    return null;
+  }
+}
+
+async function call(endpoint, body) {
+  let r = await api("POST", "/api" + endpoint, body || {});
+  if (r) G = r;
+  return r;
+}
+
+// ===== Screen switching =====
+function showScreen(name) {
+  document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+  let el = document.getElementById("scr-" + name);
+  if (el) el.classList.add("active");
+  if (name === "gallery") initGallery();
+}
+
+// ===== Menu → Start =====
+async function startGame() {
+  let r = await call("/new");
+  await renderSelection();
+}
+
+// ===== Selection =====
+async function renderSelection() {
+  showScreen("select");
+  selectedGenerals = [];
+  let r = G || await call("/state");
+  document.getElementById("sel-title").textContent =
+    (r.phase === "select_p1" ? "玩家1" : "玩家2") + " — 选择武将";
+  renderCards(r.pool);
+  renderPoolBar();
+}
+
+function renderCards(pool) {
+  let html = "";
+  let attrConf = {
+    "勇猛":{c:"#c04840",l:"勇"}, "魅力":{c:"#b050b8",l:"魅"}, "募兵":{c:"#48a048",l:"募"},
+    "防栅":{c:"#4868c0",l:"防"}, "连环":{c:"#b09830",l:"连"}, "复活":{c:"#d06840",l:"复"},
+    "伏兵":{c:"#5068b8",l:"伏"}
+  };
+  (pool || []).forEach(g => {
+    let inPool = selectedGenerals.includes(g.id);
+    let imgSrc = g.image ? `/generals/${g.image}` : "";
+    let attrTags = (g.attributes||[]).map(a => {
+      let ac = attrConf[a]||{c:"#666",l:a[0]};
+      return `<span style="background:${ac.c};color:#fff;font-size:9px;width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;font-weight:700;border:1px solid rgba(255,255,255,.2);text-shadow:0 1px 2px rgba(0,0,0,.3)">${ac.l}</span>`;
+    }).join("");
+    html += `<div class="card${inPool?' selected':''}" onclick="showGeneralPreview(event,'${g.id}')" data-id="${g.id}" style="${inPool?'opacity:.5':''}">
+      ${imgSrc ? `<img src="${imgSrc}" alt="${g.name}" onerror="this.style.display='none';this.nextSibling.style.display='flex'">` : ""}
+      <div style="width:100%;height:100%;display:${imgSrc?'none':'flex'};align-items:center;justify-content:center;font-size:28px;color:#8a7a5a">${g.name[0]}</div>
+      ${attrTags ? `<div style="position:absolute;top:6px;right:6px;display:flex;gap:3px">${attrTags}</div>` : ''}
+      ${inPool?`<div class="badge">✓</div>`:''}
+    </div>`;
+  });
+  document.getElementById("sel-cards").innerHTML = html;
+}
+
+function renderPoolBar() {
+  let poolEl = document.getElementById("sel-pool-area");
+  let selGens = selectedGenerals.map(id => G?.pool?.find(g => g.id == id)).filter(Boolean);
+  let costLimit = G?.cost_limit || 8.0;
+  let spent = selGens.reduce((sum,g) => sum + (g.cost||0), 0);
+  let remaining = Math.max(0, costLimit - spent);
+
+  let html = '';
+  // 费用指示器
+  html += `<div style="display:flex;align-items:center;gap:10px;margin-right:12px;padding:2px 12px;background:rgba(200,170,70,.1);border-radius:6px;border:1px solid ${remaining > 0 ? 'var(--gold)' : '#a0524d'}">
+    <span style="font-size:11px;color:var(--muted)">费用</span>
+    <span style="font-size:18px;font-weight:700;color:${remaining > 0 ? 'var(--gold)' : '#c07070'}">${remaining}</span>
+    <span style="font-size:10px;color:var(--muted)">/${costLimit}</span>
+  </div>`;
+
+  html += selGens.map((g,i) => {
+    return `<div style="background:var(--panel);border:1px solid var(--gold);border-radius:6px;padding:4px 10px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:12px" onclick="removeFromPool(${g.id})">
+      <span style="color:var(--muted);font-size:10px">${g.cost}费</span>
+      <span style="font-weight:700">${g.name}</span>
+      <span style="color:var(--muted);font-size:10px">×</span>
+    </div>`;
+  }).join("");
+
+  if (selGens.length === 0) {
+    html += '<span id="sel-pool-empty" style="font-size:11px;color:var(--muted);padding:4px 12px">点击武将卡预览后「加入选将池」</span>';
+  }
+
+  poolEl.innerHTML = html;
+  document.getElementById("sel-done").disabled = selectedGenerals.length === 0;
+  document.getElementById("sel-done").textContent = `完成选择 (${selectedGenerals.length}人 · ${spent}/${costLimit}费)`;
+}
+
+function showGeneralPreview(evt, id) {
+  let g = G?.pool?.find(x => x.id == id);
+  if (!g) return;
+  let inPool = selectedGenerals.includes(id);
+  let imgSrc = g.image ? `/generals/${g.image}` : "";
+  document.getElementById("preview-img").src = imgSrc;
+  document.getElementById("preview-name").textContent = g.name;
+  document.getElementById("preview-info").innerHTML = `
+    ${g.camp} · ${g.rarity} · 费用${g.cost}<br>
+    武${g.force} 智${g.intelligence} · ${g.skill}<br>
+    属性: ${(g.attributes||[]).join(" · ") || "无"}<br>
+    <small style="color:var(--muted)">${g.skill_desc||""}</small><br><br>
+    <span class="btn ${inPool?'danger':'primary'}" style="font-size:12px;padding:4px 14px" onclick="togglePool('${id}')">
+      ${inPool ? '移出选将池' : '加入选将池'}
+    </span>`;
+  document.getElementById("preview").style.display = "flex";
+}
+
+function togglePool(id) {
+  if (selectedGenerals.includes(id)) {
+    selectedGenerals = selectedGenerals.filter(x => x !== id);
+  } else {
+    // 检查费用上限
+    let g = G?.pool?.find(x => x.id == id);
+    let costLimit = G?.cost_limit || 8.0;
+    let spent = selectedGenerals.reduce((sum,x) => {
+      let gen = G?.pool?.find(g2 => g2.id == x);
+      return sum + (gen?.cost||0);
+    }, 0);
+    if (g && spent + g.cost > costLimit) {
+      alert(`费用不足！\n当前已用 ${spent} 费，${g.name} 需要 ${g.cost} 费，剩余 ${(costLimit-spent).toFixed(1)} 费`);
+      return;
+    }
+    selectedGenerals.push(id);
+  }
+  renderCards(G.pool);
+  renderPoolBar();
+  // Update preview button text without closing
+  let g = G?.pool?.find(x => x.id == id);
+  if (g && document.getElementById("preview").style.display === "flex") {
+    let inPool = selectedGenerals.includes(id);
+    document.getElementById("preview-info").innerHTML = `
+      ${g.camp} · ${g.rarity} · 费用${g.cost}<br>
+      武${g.force} 智${g.intelligence} · ${g.skill}<br>
+      属性: ${(g.attributes||[]).join(" · ") || "无"}<br>
+      <small style="color:var(--muted)">${g.skill_desc||""}</small><br><br>
+      <span class="btn ${inPool?'danger':'primary'}" style="font-size:12px;padding:4px 14px" onclick="togglePool('${id}')">
+        ${inPool ? '移出选将池' : '加入选将池'}
+      </span>`;
+  }
+}
+
+function removeFromPool(id) {
+  selectedGenerals = selectedGenerals.filter(x => x !== id);
+  renderCards(G.pool);
+  renderPoolBar();
+}
+
+function closePreview() {
+  document.getElementById("preview").style.display = "none";
+}
+
+async function confirmSelection() {
+  if (selectedGenerals.length === 0) return;
+  await call("/select", {general_ids: selectedGenerals});
+  if (G.phase === "select_p2") {
+    selectedGenerals = [];
+    await renderSelection();
+  } else {
+    await renderFormation();
+  }
+}
+
+// ===== Formation =====
+async function renderFormation() {
+  showScreen("formation");
+  selectedFormGen = null;
+  let r = G || await call("/state");
+  let p = r.phase === "formation_p1" ? r.p1 : r.p2;
+  document.getElementById("form-title").textContent = (p?.name||"玩家1") + " — 布置阵型";
+  renderFormList(p);
+  renderFormGrid(p);
+}
+
+function renderFormList(p) {
+  let html = '<div style="font-size:10px;color:var(--muted);margin-bottom:4px">未放置武将</div>';
+  let placed = new Set();
+  (p?.generals||[]).forEach(g => { if (g.row >= 0) placed.add(g.id); });
+  (p?.generals||[]).forEach(g => {
+    if (placed.has(g.id)) return;
+    let active = selectedFormGen && selectedFormGen.id === g.id ? " active" : "";
+    html += `<div class="gi${active}" onclick="selectFormGen(${g.id})">${g.name} · 武${g.force}智${g.intelligence} · ${g.skill}</div>`;
+  });
+  document.getElementById("form-list").innerHTML = html;
+}
+
+function renderFormGrid(p) {
+  let grid = Array.from({length:3}, () => Array(4).fill(null));
+  (p?.generals||[]).forEach(g => { if (g.row >= 0) grid[g.row][g.col] = g; });
+  let html = "";
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 4; c++) {
+      let g = grid[r][c];
+      if (g) {
+        html += `<div class="form-cell filled" onclick="clickFormCell(${r},${c})">${g.name}</div>`;
+      } else {
+        html += `<div class="form-cell${selectedFormGen?' droptarget':''}" onclick="clickFormCell(${r},${c})">+</div>`;
+      }
+    }
+  }
+  document.getElementById("form-grid").innerHTML = html;
+  document.getElementById("form-hint").textContent =
+    selectedFormGen ? `已选中: ${selectedFormGen.name} → 点击右侧格子放置` : "";
+}
+
+function selectFormGen(id) {
+  let r = G, p = r.phase === "formation_p1" ? r.p1 : r.p2;
+  let g = (p?.generals||[]).find(x => x.id === id);
+  if (g && g.row < 0) {
+    selectedFormGen = g;
+    renderFormList(p);
+    renderFormGrid(p);
+  }
+}
+
+function clickFormCell(row, col) {
+  let r = G, p = r.phase === "formation_p1" ? r.p1 : r.p2;
+  if (!selectedFormGen) {
+    // click already placed general → pick up
+    let g = (p?.generals||[]).find(x => x.row === row && x.col === col);
+    if (g) { selectedFormGen = g; renderFormList(p); renderFormGrid(p); }
+    return;
+  }
+  // place selected general
+  let positions = [{general_id: selectedFormGen.id, row, col}];
+  // also include already placed positions (except the one being moved)
+  (p?.generals||[]).forEach(g => {
+    if (g.row >= 0 && g.id !== selectedFormGen.id)
+      positions.push({general_id: g.id, row: g.row, col: g.col});
+  });
+  call("/place", {positions}).then(() => renderFormation());
+}
+
+async function confirmFormation() {
+  let r = G, p = r.phase === "formation_p1" ? r.p1 : r.p2;
+  let allPlaced = (p?.generals||[]).every(g => g.row >= 0);
+  if (!allPlaced) { alert("请先放置全部武将"); return; }
+  // All already placed via clickFormCell, just proceed
+  await call("/place", {positions: []});
+  if (G.phase === "formation_p2") {
+    await renderFormation();
+  } else {
+    showScreen("dice");
+  }
+}
+
+// ===== Dice =====
+async function rollDice() {
+  await call("/dice");
+  let r = G;
+  document.getElementById("d1").textContent = "🎲";
+  document.getElementById("d2").textContent = "🎲";
+  document.getElementById("dice-result").textContent = r.event;
+  // Animate briefly then show battle
+  setTimeout(async () => {
+    await renderBattle();
+  }, 800);
+}
+
+// ===== Combat FX System (GSAP + Canvas Particles) =====
+const FX = {
+  canvas: null, ctx: null, particles: [],
+  init() {
+    this.canvas = document.getElementById("fx-canvas");
+    this.ctx = this.canvas.getContext("2d");
+    this.canvas.width = window.innerWidth; this.canvas.height = window.innerHeight;
+    this.loop();
+  },
+  loop() {
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+    for (let i = this.particles.length-1; i >= 0; i--) {
+      let p = this.particles[i]; p.x += p.vx; p.y += p.vy; p.vy += .15; p.life--;
+      this.ctx.globalAlpha = Math.max(0, p.life/p.maxLife);
+      this.ctx.fillStyle = p.color; this.ctx.beginPath();
+      this.ctx.arc(p.x, p.y, p.size*(p.life/p.maxLife), 0, Math.PI*2); this.ctx.fill();
+      if (p.life <= 0) this.particles.splice(i,1);
+    }
+    this.ctx.globalAlpha = 1;
+    requestAnimationFrame(() => this.loop());
+  },
+  burst(x, y, color, count=12, spread=80) {
+    for (let i=0; i<count; i++) {
+      let angle = Math.random()*Math.PI*2, speed = (Math.random()*spread*.6+spread*.4)/30;
+      this.particles.push({x,y,vx:Math.cos(angle)*speed,vy:Math.sin(angle)*speed,color,
+        size:Math.random()*4+2,life:30+Math.random()*30,maxLife:60});
+    }
+  },
+  slash(fromEl, toEl, color="#ffa040") {
+    let r1 = fromEl.getBoundingClientRect(), r2 = toEl.getBoundingClientRect();
+    let x1 = r1.left+r1.width/2, y1 = r1.top+r1.height/2;
+    let x2 = r2.left+r2.width/2, y2 = r2.top+r2.height/2;
+    for (let i=0; i<8; i++) {
+      let t = i/7;
+      setTimeout(() => this.burst(x1+(x2-x1)*t, y1+(y2-y1)*t, color, 5, 40), t*150);
+    }
+  },
+  screenShake(dur=400) {
+    document.getElementById("app").classList.add("shaking");
+    setTimeout(() => document.getElementById("app").classList.remove("shaking"), dur);
+  }
+};
+
+// ===== GSAP combat animations =====
+function animAttack(attackerEl, targetEl, dmg) {
+  // Get positions
+  let aR = attackerEl.getBoundingClientRect(), tR = targetEl.getBoundingClientRect();
+  let dx = tR.left - aR.left, dy = tR.top - aR.top;
+
+  // 1) Attacker dashes toward target
+  if (window.gsap) {
+    gsap.timeline()
+      .to(attackerEl, {x:dx*.6, y:dy*.6, scale:1.15, duration:.2, ease:"power2.out"})
+      .call(() => {
+        FX.screenShake(400);
+        targetEl.classList.add("flash-pulse");
+        setTimeout(() => targetEl.classList.remove("flash-pulse"), 300);
+        FX.slash(attackerEl, targetEl, "#ff6040");
+        showFloatNum(targetEl, `-${dmg}`, "damage");
+      })
+      .to(attackerEl, {x:0, y:0, scale:1, duration:.25, ease:"power2.in"});
+  } else {
+    // CSS fallback
+    attackerEl.classList.add("attacking");
+    setTimeout(() => attackerEl.classList.remove("attacking"), 350);
+    setTimeout(() => {
+      FX.screenShake(400);
+      targetEl.classList.add("flash-pulse");
+      setTimeout(() => targetEl.classList.remove("flash-pulse"), 300);
+      showFloatNum(targetEl, `-${dmg}`, "damage");
+    }, 200);
+  }
+}
+
+function animSkill(casterEl, skillName, effectText, effectType="buff") {
+  // Skill burst effect
+  let burst = document.createElement("div");
+  burst.className = "skill-burst"; burst.textContent = skillName;
+  casterEl.appendChild(burst);
+  setTimeout(() => burst.remove(), 1500);
+
+  // Particles based on type
+  let pColor = effectType==="damage"?"#ff6040":(effectType==="debuff"?"#c080ff":"#ffb840");
+  let r = casterEl.getBoundingClientRect();
+  FX.burst(r.left+r.width/2, r.top+r.height/2, pColor, 18, 100);
+
+  // Card glow
+  if (window.gsap) {
+    gsap.fromTo(casterEl, {filter:"brightness(1)"}, {filter:"brightness(1.6)", duration:.2, yoyo:true, repeat:1});
+  } else {
+    casterEl.classList.add("flash-pulse");
+    setTimeout(() => casterEl.classList.remove("flash-pulse"), 400);
+  }
+
+  if (effectText) showFloatNum(casterEl, effectText, effectType);
+}
+
+function showFloatNum(el, text, cls) {
+  let d = document.createElement("div"); d.className = `float-num ${cls}`; d.textContent = text;
+  d.style.left = (el.offsetWidth/2 - 24) + "px"; d.style.top = "10px";
+  el.style.position = el.style.position || "relative"; el.appendChild(d);
+  setTimeout(() => d.remove(), 1300);
+}
+
+function animMoraleChange(moraleEl, fillEl, oldVal, newVal, maxVal) {
+  fillEl.style.width = (newVal/maxVal*100)+"%";
+  if (window.gsap) {
+    gsap.fromTo(moraleEl, {boxShadow:"0 0 4px rgba(200,170,70,.3)"},
+      {boxShadow:"0 0 20px rgba(255,220,100,.9)", duration:.3, yoyo:true, repeat:1});
+  }
+  if (newVal > oldVal) {
+    let r = moraleEl.getBoundingClientRect();
+    FX.burst(r.left+r.width/2, r.top+r.height/2, "#ffb840", 6, 40);
+  }
+}
+
+// Init on load
+
+window.addEventListener("load", () => FX.init());
+
+// ===== Battle (updated with animations) =====
+async function renderBattle() {
+  showScreen("battle");
+  let r = G;
+  if (!r || r.phase !== "battle") return;
+  document.getElementById("bturn").textContent = `第${r.turn+1||1}回合 — ${r.first||"玩家1"}`;
+  // Morale
+  let m1old = document.getElementById("m1text").textContent.split("/")[0]||"0";
+  let m2old = document.getElementById("m2text").textContent.split("/")[0]||"0";
+  document.getElementById("m1name").textContent = r.p1?.name||"玩家1";
+  document.getElementById("m2name").textContent = r.p2?.name||"玩家2";
+  // Animate morale bars
+  let m1new = r.p1?.morale||0, m1max = r.p1?.maxMorale||12;
+  let m2new = r.p2?.morale||0, m2max = r.p2?.maxMorale||12;
+  if (parseInt(m1old) !== m1new) animMoraleChange(
+    document.querySelector("#m1fill").parentElement,
+    document.getElementById("m1fill"), parseInt(m1old), m1new, m1max);
+  if (parseInt(m2old) !== m2new) animMoraleChange(
+    document.querySelector("#m2fill").parentElement,
+    document.getElementById("m2fill"), parseInt(m2old), m2new, m2max);
+  document.getElementById("m1text").textContent = `${m1new}/${m1max}`;
+  document.getElementById("m2text").textContent = `${m2new}/${m2max}`;
+  // Grid
+  renderBattleGrid("bside1", r.p1, true);
+  renderBattleGrid("bside2", r.p2, false);
+  document.getElementById("battle-status").textContent = r.event||"";
+  battlePhase = "skill";
+  updateBattlePhaseUI();
+}
+
+function renderBattleGrid(elemId, p, isAlly) {
+  let grid = Array.from({length:3}, () => Array(4).fill(null));
+  (p?.generals||[]).forEach(g => { if (g.row >= 0 && g.alive) grid[g.row][g.col] = g; });
+  let html = `<h3>${p?.name||""} 士气: ${p?.morale||0}/${p?.maxMorale||12}</h3>`;
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 4; c++) {
+      let g = grid[r][c];
+      if (g) {
+        let hpPct = g.maxHp > 0 ? (g.hp/g.maxHp*100) : 0;
+        let hpClass = hpPct > 60 ? "" : (hpPct > 30 ? "warn" : "danger");
+        let imgSrc = g.image ? `/generals/${g.image}` : "";
+        html += `<div class="bcell" data-name="${g.name}" data-skill="${g.skill||''}" data-skill-desc="${g.skill_desc||''}" data-hp="${g.hp}" data-maxhp="${g.maxHp}" onclick="${isAlly?'onBattleCell('+r+','+c+')':''}">
+          ${imgSrc?`<img src="${imgSrc}">`:''}
+          <div class="cname">${g.name}</div>
+          <div class="chp">${g.hp}/${g.maxHp}</div>
+          <div class="hpbar"><div class="hpf ${hpClass}" style="width:${hpPct}%"></div></div>
+        </div>`;
+      } else {
+        html += `<div class="bcell" style="font-size:9px;color:#3a2e1c">—</div>`;
+      }
+    }
+  }
+  document.getElementById(elemId).innerHTML = html;
+}
+
+function updateBattlePhaseUI() {
+  let phTag = battlePhase==="skill" ? "ph-skill" : (battlePhase==="target"?"ph-target":"ph-attack");
+  let phText = battlePhase==="skill" ? "技能阶段" : (battlePhase==="target"?"选择目标":"普攻阶段");
+  document.getElementById("bphase").className = "phase-tag "+phTag;
+  document.getElementById("bphase").textContent = phText;
+  document.getElementById("bact-skill").style.display = battlePhase==="skill"?"":"none";
+  document.getElementById("bact-skip").textContent = "跳过";
+}
+
+async function onBattleCell(r, c) {
+  let rState = G;
+  if (battlePhase === "skill") {
+    let p = rState.first === "玩家1" ? rState.p1 : rState.p2;
+    let gIdx = (p ? p.generals : []).findIndex(function(x) { return x.row === r && x.col === c && x.alive; });
+    let g = (p ? p.generals : [])[gIdx];
+    if (!g || g.cooldown) return;
+    let cellEl = document.querySelector("#bside1 .bcell:nth-child(" + (r*4+c+1) + ")");
+    if (cellEl) {
+      let sName = g.skill || "技能";
+      let sType = "buff", sText = "";
+      if (/攻|计|雷|火|流星|轮/.test(sName)) sType = "damage";
+      else if (/压|弱|谋|链|惑/.test(sName)) sType = "debuff";
+      let m = (g.skill_desc || "").match(/[+\-]?\d+/);
+      if (m) sText = (sType === "damage" ? "" : "+") + m[0] + (sType === "damage" ? "伤" : "");
+      animSkill(cellEl, sName, sText, sType);
+    }
+    await call("/battle/skill", {general_index: gIdx});
+    await call("/battle/next");
+    await renderBattle();
+    return;
+  }
+  if (battlePhase === "attack") {
+    let p = rState.first === "玩家1" ? rState.p1 : rState.p2;
+    let g = (p ? p.generals : []).find(function(x) { return x.row === r && x.col === c && x.alive; });
+    if (g) {
+      selectedAttacker = {general: g, row: r, col: c};
+      battlePhase = "target";
+      updateBattlePhaseUI();
+      let cellEl = document.querySelector("#bside1 .bcell:nth-child(" + (r*4+c+1) + ")");
+      if (cellEl) cellEl.classList.add("selected");
+    }
+    return;
+  }
+  if (battlePhase === "target") {
+    let enemy = rState.first === "玩家1" ? rState.p2 : rState.p1;
+    let tIdx = (enemy ? enemy.generals : []).findIndex(function(x) { return x.row === r && x.col === c && x.alive; });
+    let target = (enemy ? enemy.generals : [])[tIdx];
+    if (target && selectedAttacker) {
+      let p = rState.first === "玩家1" ? rState.p1 : rState.p2;
+      let aIdx = (p ? p.generals : []).indexOf(selectedAttacker.general);
+      let aCell = document.querySelector("#bside1 .bcell:nth-child(" + (selectedAttacker.row*4+selectedAttacker.col+1) + ")");
+      let tCell = document.querySelector("#bside2 .bcell:nth-child(" + (r*4+c+1) + ")");
+      if (aCell && tCell) animAttack(aCell, tCell, Math.max(1, (selectedAttacker.general.force || 5) - (target.force || 3)));
+      await new Promise(function(resolve) { setTimeout(resolve, 250); });
+      await call("/battle/attack", {attacker: aIdx, target: tIdx});
+      selectedAttacker = null;
+      battlePhase = "skill";
+      await call("/battle/next");
+      await renderBattle();
+    }
+  }
+}
+async function useSkill() {
+  battlePhase = "skill";
+  updateBattlePhaseUI();
+}
+
+async function skipPhase() {
+  if (battlePhase === "target") { battlePhase = "attack"; selectedAttacker = null; }
+  else if (battlePhase === "skill") { battlePhase = "attack"; }
+  else {
+    await call("/battle/next");
+    if (G.phase === "over") { showGameOver(); return; }
+    battlePhase = "skill";
+  }
+  updateBattlePhaseUI();
+  await renderBattle();
+  if (G.phase === "over") showGameOver();
+}
+
+// ===== Game Over =====
+function showGameOver() {
+  showScreen("over");
+  document.getElementById("over-winner").textContent = G.winner + " 获得胜利！";
+  document.getElementById("over-stats").textContent = `总回合数: ${G.turn}`;
+}
+
+// ===== Gallery =====
+function initGallery() {
+  fetch("/api/generals").then(r=>r.json()).then(r => {
+    let all = r.pool || [];
+    // Filters
+    let campFilter = (document.querySelector("#dm-camp .opt.active")||{}).dataset?.val || "";
+    let attrFilter = (document.querySelector("#dm-attr .opt.active")||{}).dataset?.val || "";
+    galleryFiltered = all.filter(g => {
+      if (campFilter && g.camp !== campFilter) return false;
+      if (attrFilter && !(g.attributes||[]).includes(attrFilter)) return false;
+      return true;
+    });
+    if (galleryIdx >= galleryFiltered.length) galleryIdx = 0;
+    renderGallery();
+    // Init dropdowns once
+    if (!document.getElementById("dm-camp").innerHTML) {
+      let camps = ["全部",...new Set(all.map(g=>g.camp))];
+      let attrs = ["全部",...new Set(all.flatMap(g=>g.attributes||[]))];
+      document.getElementById("dm-camp").innerHTML = camps.map(c =>
+        `<div class="opt${c==="全部"?" active":""}" data-val="${c==="全部"?"":c}" onclick="filterGallery('camp','${c}')">${c}</div>`).join("");
+      document.getElementById("dm-attr").innerHTML = attrs.map(a =>
+        `<div class="opt${a==="全部"?" active":""}" data-val="${a==="全部"?"":a}" onclick="filterGallery('attr','${a}')">${a}</div>`).join("");
+    }
+  });
+}
+
+function filterGallery(type, val) {
+  document.querySelectorAll(`#dm-${type} .opt`).forEach(o => o.classList.remove("active"));
+  event.target.classList.add("active");
+  initGallery();
+}
+
+function renderGallery() {
+  if (galleryFiltered.length === 0) {
+    document.getElementById("gallery-content").innerHTML = '<p style="color:var(--muted)">无符合条件的武将</p>';
+    return;
+  }
+  let g = galleryFiltered[galleryIdx];
+  let imgSrc = g.image ? `/generals/${g.image}` : "";
+  let bio = (g.bio||"").slice(0, 200);
+  let years = g.years||"";
+  let cou = g.courtesy||"";
+  let html = `
+    <div class="gallery-card">
+      ${imgSrc ? `<img src="${imgSrc}" alt="${g.name}">` : `<div style="height:300px;display:flex;align-items:center;justify-content:center;font-size:60px;color:var(--shu)">${g.name[0]}</div>`}
+      <div class="gn">${g.name}</div>
+    </div>
+    <div class="gallery-bio">${years} · ${cou}<br><br>${bio}</div>
+    <div class="gallery-nav">
+      <div class="nav-btn" onclick="galleryIdx=(galleryIdx-1+galleryFiltered.length)%galleryFiltered.length;renderGallery()">◀</div>
+      <div style="font-size:12px;color:var(--muted);line-height:36px">${galleryIdx+1}/${galleryFiltered.length}</div>
+      <div class="nav-btn" onclick="galleryIdx=(galleryIdx+1)%galleryFiltered.length;renderGallery()">▶</div>
+    </div>`;
+  document.getElementById("gallery-content").innerHTML = html;
+}
+
+function toggleDropdown(id) {
+  document.getElementById(id).classList.toggle("open");
+}
+
+// Close dropdowns on outside click
+document.addEventListener("click", function(e) {
+  if (!e.target.closest(".dropdown")) {
+    document.querySelectorAll(".dropdown").forEach(d => d.classList.remove("open"));
+  }
+});
+
+// ===== Init =====
+showScreen("menu");
+</script>
+</body>
+</html>
