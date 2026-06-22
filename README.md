@@ -10,29 +10,12 @@
 
 ## 快速开始
 
-### Web 版（推荐）
-
 ```bash
 # 零依赖，Python 标准库即可运行
 python main_web.py
 ```
 
-浏览器打开 `http://localhost:8080` 即可游玩。
-
-### 命令行版
-
-```bash
-PYTHONIOENCODING=utf-8 python main.py
-# 选择 1: 命令行模式
-```
-
-### 图形界面版
-
-```bash
-PYTHONIOENCODING=utf-8 python main.py
-# 选择 2: 图形界面模式
-# 或直接: python main.py --gui
-```
+浏览器打开 `http://localhost:8088` 即可游玩。
 
 ---
 
@@ -116,12 +99,9 @@ PYTHONIOENCODING=utf-8 python main.py
 
 ## 启动方式
 
-| 模式 | 命令 | 说明 |
-|------|------|------|
-| Web | `python main_web.py` | 浏览器访问 localhost:8080 |
-| CLI | `python main.py` -> 1 | 纯命令行交互 |
-| GUI | `python main.py` -> 2 | Pygame图形窗口 |
-| GUI直达 | `python main.py --gui` | 跳过菜单直接GUI |
+```bash
+python main_web.py     # Web版，浏览器访问 localhost:8088
+```
 
 ---
 

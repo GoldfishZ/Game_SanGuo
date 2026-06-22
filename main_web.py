@@ -1,7 +1,7 @@
 """
 三国武将卡牌游戏 — Web 版服务器
 使用 Python 内置 http.server，零外部依赖。
-启动后浏览器访问 http://localhost:8080 即可游玩。
+启动后浏览器访问 http://localhost:8088 即可游玩。
 """
 
 import json
