@@ -53,24 +53,29 @@ class GameState:
         self.pool_p1 = []  # 玩家1的独立选将池
         self.pool_p2 = []  # 玩家2的独立选将池
 
-    def _make_pool(self):
-        """生成15位不重复武将的选将池"""
-        from game_data.generals_data import GENERALS_DATA
-        import random as _rnd
-        n = min(15, len(GENERALS_DATA))
-        chosen = _rnd.sample(GENERALS_DATA, n)
+    def _make_pool(self, chosen_data):
+        """Generate one player's draft pool from already selected raw general data."""
         pool = []
-        for i, data in enumerate(chosen):
+        for i, data in enumerate(chosen_data):
             from game_data.generals_config import create_general_from_data
             g = create_general_from_data(data)
             g.pool_index = i + 1
             pool.append(g)
         return pool
 
+    def _make_distinct_pools(self, pool_size=16):
+        """Split the full roster into two non-overlapping draft pools."""
+        from game_data.generals_data import GENERALS_DATA
+        import random as _rnd
+        shuffled = list(GENERALS_DATA)
+        _rnd.shuffle(shuffled)
+        first = shuffled[:pool_size]
+        second = shuffled[pool_size:pool_size * 2]
+        return self._make_pool(first), self._make_pool(second)
+
     def reset(self):
         self.controller = GameFlowController()
-        self.pool_p1 = self._make_pool()
-        self.pool_p2 = self._make_pool()
+        self.pool_p1, self.pool_p2 = self._make_distinct_pools()
         self.phase = "select_p1"
         self.battle_system = None
         self.last_event = "游戏已初始化"
@@ -82,6 +87,10 @@ class GameState:
         result = {"phase": self.phase, "event": self.last_event,
                   "turn": self.turn_count, "winner": self.winner,
                   "cost_limit": self.cost_limit}
+        if self.battle_system:
+            current_team = self.battle_system.current_side
+            result["current_team"] = "p1" if current_team == c.player1.team else "p2"
+            result["current_player"] = c.player1.name if current_team == c.player1.team else c.player2.name
         # 武将池——根据当前阶段返回对应玩家的池子
         active_pool = self.pool_p1 if self.phase == "select_p1" else self.pool_p2
         result["pool"] = [{"id": g.general_id, "name": g.name,
@@ -148,9 +157,15 @@ def handle_api(path, body, handler):
     # POST /api/select → {"general_ids": [1,2,...]}
     if path == "/api/select":
         ids = body.get("general_ids", [])
+        selected_ids = set()
+        for gid in ids:
+            try:
+                selected_ids.add(int(gid))
+            except (TypeError, ValueError):
+                continue
         pool = STATE.pool_p1 if STATE.phase == "select_p1" else STATE.pool_p2
         target_player = c.player1 if STATE.phase == "select_p1" else c.player2
-        for gid in ids:
+        for gid in selected_ids:
             for g in pool:
                 if g.general_id == gid and hasattr(g, 'pool_index'):
                     target_player.add_general_to_team(g)
@@ -172,6 +187,9 @@ def handle_api(path, body, handler):
                       if gen.general_id == p["general_id"]), None)
             if g:
                 target_player.team.position_general(g, p["row"], p["col"])
+        if positions:
+            STATE.last_event = f"{target_player.name}已更新布阵"
+            return STATE.to_json()
         if STATE.phase == "formation_p1":
             STATE.phase = "formation_p2"
             STATE.last_event = "玩家1布阵完成"
@@ -201,14 +219,14 @@ def handle_api(path, body, handler):
             callbacks=None,
             first_player_team_name=c.first_player.team.team_name,
         )
+        STATE.battle_system.turn_count = 1
+        STATE.turn_count = 1
+        STATE.battle_system.current_side.update_effects()
         return STATE.to_json()
 
-    # POST /api/battle/next → execute one battle turn step
-    if path == "/api/battle/next":
-        if not STATE.battle_system:
-            return STATE.to_json()
+    # POST /api/battle/next or /api/battle/skip -> end current player's turn
+    if path in ("/api/battle/next", "/api/battle/skip") and STATE.battle_system:
         bs = STATE.battle_system
-        # 如果战斗结束
         if bs._is_game_over():
             STATE.phase = "over"
             STATE.winner = bs._determine_winner()
@@ -216,21 +234,37 @@ def handle_api(path, body, handler):
             for p in [c.player1, c.player2]:
                 if p.team.team_name == wn:
                     STATE.winner = p.name
-            STATE.last_event = f"战斗结束！{STATE.winner} 获胜"
-        else:
-            bs._execute_turn()
-            STATE.turn_count = bs.turn_count
-            STATE.last_event = f"第{bs.turn_count}回合"
+            STATE.last_event = f"战斗结束，{STATE.winner} 获胜"
+            return STATE.to_json()
+
+        bs._end_turn_cleanup()
+        bs._switch_to_next_player()
+        bs.turn_count += 1
+        STATE.turn_count = bs.turn_count
+        bs.current_side.update_effects()
+        current_player = c.player1.name if bs.current_side == c.player1.team else c.player2.name
+        STATE.last_event = f"第{STATE.turn_count}回合，轮到{current_player}行动"
         return STATE.to_json()
 
-    # POST /api/battle/skill → {"general_index": 0}
+    # POST /api/battle/skill -> {"general_id": 1} or legacy {"general_index": 0}
     if path == "/api/battle/skill" and STATE.battle_system:
-        idx = body.get("general_index", -1)
         bs = STATE.battle_system
-        alive = bs.current_side.get_alive_generals()
-        if 0 <= idx < len(alive) and alive[idx].can_use_active_skill():
-            caster = alive[idx]
-            # 自选目标或全体友方
+        caster = None
+        gid = body.get("general_id", None)
+        if gid is not None:
+            try:
+                gid = int(gid)
+            except (TypeError, ValueError):
+                gid = None
+            caster = next((g for g in bs.current_side.get_alive_generals()
+                           if g.general_id == gid), None)
+        else:
+            idx = body.get("general_index", -1)
+            alive = bs.current_side.get_alive_generals()
+            if 0 <= idx < len(alive):
+                caster = alive[idx]
+
+        if caster and caster.can_use_active_skill():
             from src.skills.skill_base import TargetType
             tt = caster.active_skill.target_type
             if tt == TargetType.SELF:
@@ -238,38 +272,63 @@ def handle_api(path, body, handler):
             elif tt == TargetType.ALL_ALLIES:
                 targets = bs.current_side.get_alive_generals()
             else:
-                # 需要选目标——简化为第一个敌方
                 enemy = bs._get_enemy_team().get_alive_generals()
                 targets = [enemy[0]] if enemy else []
             result = caster.use_active_skill(targets, bs.battle_context, bs.current_side)
-            STATE.last_event = f"{caster.name} 使用 {caster.active_skill.name}" if result.get("success") else "技能失败"
+            STATE.last_event = f"{caster.name} 使用 {caster.active_skill.name}" if result.get("success") else result.get("message", "技能失败")
             if bs._is_game_over():
                 STATE.phase = "over"
                 STATE.winner = bs._determine_winner()
+        else:
+            STATE.last_event = "该武将无法使用技能"
         return STATE.to_json()
 
-    # POST /api/battle/attack → {"attacker": 0, "target": 0}
+    # POST /api/battle/attack -> {"attacker_id": 1, "target_id": 2} or legacy indexes
     if path == "/api/battle/attack" and STATE.battle_system:
-        a = body.get("attacker", 0)
-        t = body.get("target", 0)
         bs = STATE.battle_system
         attackers = bs.current_side.get_alive_generals()
-        targets = bs._get_enemy_team().get_attackable_targets()
-        if 0 <= a < len(attackers) and 0 <= t < len(targets):
-            dmg = attackers[a].attack(targets[t])
-            STATE.last_event = f"{attackers[a].name} → {targets[t].name} [-{dmg}]"
-            if not targets[t].is_alive:
-                bs._get_enemy_team().remove_general_from_formation(targets[t])
-                STATE.last_event += f" {targets[t].name} 阵亡！"
+        enemy_team = bs._get_enemy_team()
+        attacker = None
+        target = None
+
+        attacker_id = body.get("attacker_id", None)
+        target_id = body.get("target_id", None)
+        if attacker_id is not None:
+            try:
+                attacker_id = int(attacker_id)
+            except (TypeError, ValueError):
+                attacker_id = None
+            attacker = next((g for g in attackers if g.general_id == attacker_id), None)
+        else:
+            a = body.get("attacker", 0)
+            if 0 <= a < len(attackers):
+                attacker = attackers[a]
+
+        if attacker:
+            legal_targets = bs._get_attack_targets_for_attacker(attacker)
+            if target_id is not None:
+                try:
+                    target_id = int(target_id)
+                except (TypeError, ValueError):
+                    target_id = None
+                target = next((g for g in legal_targets if g.general_id == target_id), None)
+            else:
+                t = body.get("target", 0)
+                if 0 <= t < len(legal_targets):
+                    target = legal_targets[t]
+
+        if attacker and target:
+            dmg = attacker.attack(target)
+            STATE.last_event = f"{attacker.name} 普攻 {target.name} [-{dmg}]"
+            if not target.is_alive:
+                enemy_team.remove_general_from_formation(target)
+                STATE.last_event += f" {target.name} 阵亡"
             if bs._is_game_over():
                 STATE.phase = "over"
                 STATE.winner = bs._determine_winner()
+        else:
+            STATE.last_event = "请选择合法的普攻目标"
         return STATE.to_json()
-
-    # POST /api/battle/skip → skip skill/attack
-    if path == "/api/battle/skip":
-        # 前进回合
-        return handle_api("/api/battle/next", {}, handler)
 
     # GET /api/state
     if path == "/api/state":
@@ -354,7 +413,7 @@ class GameServer(BaseHTTPRequestHandler):
 
 def start():
     os.makedirs(WEB_DIR, exist_ok=True)
-    port = 8088
+    port = int(os.environ.get("PORT", "8088"))
     server = HTTPServer(("0.0.0.0", port), GameServer)
     print("=== 三国武将卡牌游戏 Web 版 ===")
     print(f"   打开浏览器访问: http://localhost:{port}")
