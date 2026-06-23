@@ -132,6 +132,7 @@ class GameState:
                 "skill_desc": g.active_skill.description if g.active_skill else "",
                 "cooldown": g.active_skill_cooldown,
                 "image": g.image_file or "",
+                "attributes": [a.value for a in (g.attribute or [])],
             })
         return {
             "name": p.name,

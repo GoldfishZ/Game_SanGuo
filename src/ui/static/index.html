@@ -90,22 +90,54 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
 .form-cell.filled{border-style:solid;border-color:#3a3020;color:var(--gold);font-size:clamp(13px,1.6vw,18px);font-weight:600}
 .form-cell.droptarget{border-color:var(--gold);background:#2d2218}
 
-/* ===== Battle ===== */
-.battle{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(12px,2.5vw,30px);margin:clamp(6px,1vh,14px) 0;flex:0 0 auto;min-height:0}
-.bside{min-width:0;display:flex;flex-direction:column;background:rgba(10,8,6,.62);border:1px solid rgba(201,168,76,.22);border-radius:8px;padding:clamp(6px,1vw,12px)}
-.bside h3{font-size:clamp(11px,1.4vw,16px);color:var(--muted);margin-bottom:clamp(4px,.8vh,8px);text-align:center;flex:0 0 auto}
-.bgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:clamp(4px,.6vw,8px);height:clamp(300px,calc(100vh - 300px),500px);min-height:0}
+/* ===== Battle (top/bottom layout) ===== */
+.battle{display:flex;flex-direction:column;gap:clamp(8px,1.5vh,16px);margin:clamp(4px,.8vh,10px) 0;flex:1;min-height:0}
+.bside{min-width:0;display:flex;flex-direction:column;flex:1;background:rgba(10,8,6,.62);border:1px solid rgba(201,168,76,.22);border-radius:8px;padding:clamp(4px,.8vw,10px)}
+.bside h3{font-size:clamp(11px,1.4vw,16px);color:var(--muted);margin-bottom:clamp(3px,.6vh,6px);text-align:center;flex:0 0 auto}
+.bgrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));gap:clamp(3px,.5vw,6px);flex:1;min-height:0;height:clamp(160px,28vh,280px)}
 .bcell{background:var(--panel);border:1px solid var(--border);border-radius:5px;
-  padding:clamp(3px,.4vw,6px);min-width:0;min-height:0;position:relative;overflow:hidden;cursor:pointer;transition:all .12s;display:flex;flex-direction:column;align-items:center;justify-content:flex-start}
+  padding:clamp(2px,.3vw,5px);min-width:0;min-height:0;position:relative;overflow:hidden;cursor:pointer;transition:all .12s;display:flex;flex-direction:column;align-items:center;justify-content:flex-start}
 .bcell:hover{border-color:var(--gold);box-shadow:0 0 6px rgba(190,150,60,.18)}
 .bcell.selected{border:2px solid var(--gold);box-shadow:0 0 12px rgba(190,150,60,.3)}
+.bcell.locked{cursor:default;opacity:.85}
 .bcell .cname{font-size:clamp(9px,1.1vw,13px);color:var(--text);text-align:center;margin-top:2px;line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bcell .chp{font-size:clamp(8px,1vw,11px);color:var(--muted);text-align:center;line-height:1.1}
-.bcell .hpbar{position:absolute;bottom:2px;left:3px;right:3px;height:3px;
-  background:#281e14;border-radius:1px;overflow:hidden}
+.bcell .hpbar{position:absolute;bottom:2px;left:3px;right:3px;height:3px;background:#281e14;border-radius:1px;overflow:hidden}
 .bcell .hpf{height:100%;background:var(--shu);border-radius:1px}
 .bcell .hpf.warn{background:var(--gold)}.bcell .hpf.danger{background:var(--wu)}
-.bcell img{width:100%;height:calc(100% - 32px);min-height:0;object-fit:contain;border-radius:2px;image-rendering:auto;flex:1}
+.bcell img{width:100%;height:calc(100% - 30px);min-height:0;object-fit:contain;border-radius:2px;image-rendering:auto;flex:1}
+/* P1 front row faces enemy (flip vertically) */
+#bside1 .bcell[data-row=\"0\"] img{transform:scaleY(-1)}
+#bside2 .bcell[data-row=\"0\"] img{transform:none}
+
+/* ---- Death effects ---- */
+@keyframes deathFade{0%{transform:scale(1);opacity:1;filter:brightness(1)}50%{transform:scale(.7);opacity:.4;filter:brightness(2) saturate(0)}100%{transform:scale(.5);opacity:.15;filter:brightness(.3) saturate(0)}}
+@keyframes deathSkull{0%,70%{opacity:0;transform:translate(-50%,-50%) scale(0)}100%{opacity:.9;transform:translate(-50%,-50%) scale(1)}}
+.bcell.dead{animation:deathFade .8s ease-in forwards;pointer-events:none}
+.bcell.dead::before{content:\"💀\";position:absolute;top:50%;left:50%;font-size:clamp(24px,4vw,40px);z-index:10;animation:deathSkull .8s ease-out .5s forwards;opacity:0}
+
+/* ---- Hover card tooltip ---- */
+.bcell-tip{display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:100;
+  background:rgba(10,8,6,.95);border:2px solid var(--gold);border-radius:10px;padding:clamp(8px,1.2vw,14px);
+  min-width:180px;text-align:center;pointer-events:none}
+.bcell-tip img{width:clamp(60px,10vw,100px);height:auto;object-fit:contain;display:block;margin:0 auto 4px}
+.bcell-tip .tip-name{font-size:clamp(12px,1.6vw,16px);color:var(--gold);font-weight:700}
+.bcell-tip .tip-stat{font-size:clamp(9px,1.1vw,12px);color:var(--text)}
+.bcell-tip .tip-attr{font-size:clamp(8px,1vw,11px);margin-top:3px}
+.bcell:hover .bcell-tip{display:block}
+
+/* Passive attribute indicators — bolder, multi-attribute stacking */
+.bcell.fence::after{content:\"\";position:absolute;inset:1px;border:4px solid rgba(80,180,255,.7);border-radius:5px;pointer-events:none;animation:fencePulse 1.5s ease-in-out infinite;box-shadow:inset 0 0 10px rgba(80,180,255,.3)}
+@keyframes fencePulse{0%,100%{border-color:rgba(80,180,255,.7)}50%{border-color:rgba(130,220,255,.95)}}
+.bcell.fence-broken::after{border-color:rgba(80,180,255,.12);box-shadow:none;animation:none}
+.bcell.chain{border-color:#c09030;box-shadow:0 0 12px rgba(200,160,50,.6),inset 0 0 8px rgba(200,160,50,.2);border-width:2px}
+.bcell.bravery-active{box-shadow:inset 0 0 20px rgba(255,50,30,.6),0 0 10px rgba(255,50,30,.4);border-color:#ff3020}
+.bcell.charisma{box-shadow:0 0 12px rgba(220,100,220,.6),inset 0 0 8px rgba(220,100,220,.2)}
+.bcell.recruit{box-shadow:0 0 10px rgba(60,220,80,.5),inset 0 0 6px rgba(60,220,80,.2);border-color:#40c050}
+.bcell.revive{box-shadow:0 0 14px rgba(255,210,70,.6),inset 0 0 8px rgba(255,210,70,.2);border-color:#d4a030}
+.bcell.revive-used{box-shadow:0 0 3px rgba(100,100,100,.2);opacity:.7;filter:grayscale(.5)}
+.bcell.ambush-hidden{opacity:.45;filter:brightness(.4) blur(1px)}
+.bcell.ambush-revealed{opacity:1;filter:none;transition:all .5s ease-out}
 
 /* ===== Bamboo ===== */
 .bamboo{
@@ -299,6 +331,7 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
       <div class="btn primary" id="bact-attack" onclick="chooseAttack()">普攻</div>
       <div class="btn" id="bact-skill" onclick="useSkill()">使用技能</div>
       <div class="btn" id="bact-skip" onclick="skipPhase()">跳过回合</div>
+      <div class="btn danger" onclick="quitToMenu()">退出游戏</div>
     </div>
   </div>
 
@@ -306,11 +339,55 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
   <div id="scr-rules" class="screen">
     <div class="bamboo">
       <h2>游 戏 规 则</h2>
-      <div class="rule"><h3>阵型</h3><p>3行×4列方格，前列武将挡住后列。敌方只能攻击最前排武将。</p></div>
-      <div class="rule"><h3>伤害</h3><p>攻击方武力>目标武力: 伤害=武力差。攻击方武力≤目标武力: 伤害=min(3,(武力+智力)差)，最低1点。</p></div>
+      <div class="rule"><h3>阵型</h3><p>3行x4列方格，前列武将挡住后列。敌方只能攻击最前排武将。</p></div>
+      <div class="rule"><h3>伤害</h3><p>攻击方武力>目标武力: 伤害=武力差。攻击方武力<=目标武力: 伤害=min(3,(武力+智力)差)，最低1点。</p></div>
       <div class="rule"><h3>士气</h3><p>初始12点，共用士气池。技能消耗士气。后手士气上限+2。</p></div>
-      <div class="rule"><h3>回合</h3><p>先手→后手交替。每回合: ①技能使用阶段→②普攻阶段。</p></div>
-      <div class="rule"><h3>七大被动</h3><p>勇猛(低血量×1.5) | 魅力(反弹伤害) | 募兵(回合回复) | 防栅(挡一次) | 连环(分担) | 复活(50%HP) | 伏兵(隐身)</p></div>
+      <div class="rule"><h3>回合</h3><p>先手->后手交替。每回合: 1技能阶段->2普攻阶段。</p></div>
+      <div class="rule" style="display:flex;gap:12px;align-items:flex-start">
+        <div style="flex:1"><h3>防栅</h3><p>完全抵挡一次攻击后失效。被攻击时蓝色护盾守卫，抵挡后护盾碎裂消失。</p></div>
+        <div style="position:relative;width:90px;height:130px;border:2px solid rgba(80,180,255,.7);border-radius:6px;overflow:hidden;flex-shrink:0;animation:fencePulse 1.5s ease-in-out infinite">
+          <img src="/generals/wang_yi.png" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">
+          <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:2px 4px;font-size:9px;text-align:center;color:#fff">王异 · 防栅</div>
+        </div>
+      </div>
+      <div class="rule" style="display:flex;gap:12px;align-items:flex-start">
+        <div style="flex:1"><h3>连环</h3><p>所有连环武将共享buff/debuff并分担伤害。金色锁链相连，一荣俱荣一损俱损。</p></div>
+        <div style="position:relative;width:90px;height:130px;border:2px solid #c09030;border-radius:6px;overflow:hidden;flex-shrink:0;box-shadow:0 0 12px rgba(200,160,50,.6)">
+          <img src="/generals/zhuge_liang.png" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">
+          <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:2px 4px;font-size:9px;text-align:center;color:#fff">诸葛亮 · 连环</div>
+        </div>
+      </div>
+      <div class="rule" style="display:flex;gap:12px;align-items:flex-start">
+        <div style="flex:1"><h3>勇猛</h3><p>低血量时普攻伤害x1.5。生命值降至一半以下时触发血红色战意特效。</p></div>
+        <div style="position:relative;width:90px;height:130px;border:2px solid #ff3020;border-radius:6px;overflow:hidden;flex-shrink:0;box-shadow:inset 0 0 20px rgba(255,50,30,.6)">
+          <img src="/generals/zhang_fei.png" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">
+          <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:2px 4px;font-size:9px;text-align:center;color:#fff">张飞 · 勇猛</div>
+        </div>
+      </div>
+      <div class="rule" style="display:flex;gap:12px;align-items:flex-start">
+        <div style="flex:1"><h3>魅力</h3><p>被击杀时反弹致死伤害的一半给攻击者。死亡时紫色魅影反噬仇敌。</p></div>
+        <div style="position:relative;width:90px;height:130px;border:2px solid rgba(220,100,220,.6);border-radius:6px;overflow:hidden;flex-shrink:0;box-shadow:0 0 12px rgba(220,100,220,.6)">
+          <img src="/generals/cai_wenji.png" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">
+          <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:2px 4px;font-size:9px;text-align:center;color:#fff">蔡文姬 · 魅力</div>
+        </div>
+      </div>
+      <div class="rule" style="display:flex;gap:12px;align-items:flex-start">
+        <div style="flex:1"><h3>募兵/复活/伏兵</h3><p>募兵: 受伤后每回合回复1点。复活: 死亡时50%HP复活一次。伏兵: 使用技能前不可被选中。</p></div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <div style="position:relative;width:65px;height:95px;border:2px solid #40c050;border-radius:5px;overflow:hidden;box-shadow:0 0 10px rgba(60,220,80,.5)">
+            <img src="/generals/xu_chu.png" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">
+            <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:1px 3px;font-size:7px;text-align:center;color:#fff">许褚·募兵</div>
+          </div>
+          <div style="position:relative;width:65px;height:95px;border:2px solid #d4a030;border-radius:5px;overflow:hidden;box-shadow:0 0 14px rgba(255,210,70,.6)">
+            <img src="/generals/sun_jian.png" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">
+            <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:1px 3px;font-size:7px;text-align:center;color:#fff">孙坚·复活</div>
+          </div>
+          <div style="position:relative;width:65px;height:95px;border:2px solid rgba(100,100,100,.5);border-radius:5px;overflow:hidden;opacity:.45;filter:brightness(.4)">
+            <img src="/generals/zhang_ren.png" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">
+            <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:1px 3px;font-size:7px;text-align:center;color:#fff">张任·伏兵</div>
+          </div>
+        </div>
+      </div>
       <div class="rule"><h3>胜利</h3><p>一方全体武将阵亡则游戏结束。</p></div>
     </div>
     <div style="text-align:center;margin-top:12px"><div class="btn" onclick="showScreen('menu')">返回主菜单</div></div>
@@ -821,8 +898,29 @@ function renderBattleGrid(elemId, p, isAlly) {
         let selected = isAlly && selectedAttacker && selectedAttacker.general.id === g.id;
         let clickable = isAlly || battlePhase === "target";
         let clickHandler = isAlly ? `onBattleAllyCell(${r},${c})` : `onBattleEnemyCell(${r},${c})`;
-        cells += `<div class="bcell${selected?' selected':''}${clickable?'':' locked'}" data-name="${g.name}" data-id="${g.id}" onclick="${clickable?clickHandler:''}">
+        // Passive attribute CSS classes (bolder, multi-attribute stacking)
+        let attrClass = "";
+        let attrs = g.attributes || [];
+        if (attrs.includes("防栅") && (g._fenceBroken ? false : g.hp === g.maxHp)) attrClass += " fence";
+        else if (attrs.includes("防栅") && (g._fenceBroken || g.hp < g.maxHp)) attrClass += " fence-broken";
+        if (attrs.includes("连环")) attrClass += " chain";
+        if (attrs.includes("勇猛") && g.hp <= g.maxHp/2) attrClass += " bravery-active";
+        if (attrs.includes("魅力")) attrClass += " charisma";
+        if (attrs.includes("募兵") && g.hp < g.maxHp) attrClass += " recruit";
+        if (attrs.includes("复活")) attrClass += g._reviveUsed ? " revive-used" : " revive";
+        if (attrs.includes("伏兵")) attrClass += g._ambushHidden ? " ambush-hidden" : " ambush-revealed";
+        // Dead
+        if (!g.alive) attrClass += " dead";
+        cells += `<div class="bcell${selected?' selected':''}${clickable?'':' locked'}${attrClass}"
+          data-name="${g.name}" data-id="${g.id}" data-row="${r}" data-force="${g.force||0}" data-intel="${g.intelligence||0}"
+          data-skill="${g.skill||''}" data-skill-desc="${g.skill_desc||''}" data-attrs="${(attrs||[]).join(',')}"
+          onclick="${clickable?clickHandler:''}">
           ${imgSrc?`<img src="${imgSrc}">`:''}
+          <div class="bcell-tip"><img src="${imgSrc||''}"><div class="tip-name">${g.name}</div><div class="tip-stat">武${g.force||0} 智${g.intelligence||0} | ${g.skill||'无'}</div><div class="tip-attr">${(attrs||[]).join(' · ')||'无属性'}</div></div>
+          <div class="cname">${g.alive?g.name:'阵亡'}</div>
+          <div class="chp">${g.alive?g.hp+'/'+g.maxHp:'--'}</div>
+          <div class="hpbar"><div class="hpf ${hpClass}" style="width:${g.alive?hpPct:0}%"></div></div>
+        </div>`;
           <div class="cname">${g.name}</div>
           <div class="chp">${g.hp}/${g.maxHp}</div>
           <div class="hpbar"><div class="hpf ${hpClass}" style="width:${hpPct}%"></div></div>
@@ -984,6 +1082,13 @@ document.addEventListener("click", function(e) {
     document.querySelectorAll(".dropdown").forEach(d => d.classList.remove("open"));
   }
 });
+
+// ===== Quit to menu =====
+function quitToMenu() {
+  G = null; selectedGenerals = []; selectedAttacker = null;
+  battlePhase = "skill";
+  showScreen("menu");
+}
 
 // ===== Init =====
 showScreen("menu");
