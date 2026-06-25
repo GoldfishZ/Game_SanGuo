@@ -107,8 +107,8 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
 .bcell .hpf.warn{background:var(--gold)}.bcell .hpf.danger{background:var(--wu)}
 .bcell img{width:100%;height:calc(100% - 30px);min-height:0;object-fit:contain;border-radius:2px;image-rendering:auto;flex:1}
 /* P1 front row faces enemy (flip vertically) */
-#bside1 .bcell[data-row=\"0\"] img{transform:scaleY(-1)}
-#bside2 .bcell[data-row=\"0\"] img{transform:none}
+#bside1 .bcell[data-row="0"] img{transform:scaleY(-1)}
+#bside2 .bcell[data-row="0"] img{transform:none}
 
 /* ---- Death effects ---- */
 @keyframes deathFade{0%{transform:scale(1);opacity:1;filter:brightness(1)}50%{transform:scale(.7);opacity:.4;filter:brightness(2) saturate(0)}100%{transform:scale(.5);opacity:.15;filter:brightness(.3) saturate(0)}}
@@ -920,10 +920,6 @@ function renderBattleGrid(elemId, p, isAlly) {
           <div class="cname">${g.alive?g.name:'阵亡'}</div>
           <div class="chp">${g.alive?g.hp+'/'+g.maxHp:'--'}</div>
           <div class="hpbar"><div class="hpf ${hpClass}" style="width:${g.alive?hpPct:0}%"></div></div>
-        </div>`;
-          <div class="cname">${g.name}</div>
-          <div class="chp">${g.hp}/${g.maxHp}</div>
-          <div class="hpbar"><div class="hpf ${hpClass}" style="width:${hpPct}%"></div></div>
         </div>`;
       } else {
         cells += `<div class="bcell empty" style="font-size:9px;color:#3a2e1c">—</div>`;
