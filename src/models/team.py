@@ -143,24 +143,48 @@ class Team:
             return False
         return self.swap_general_positions(target, rear_general)
 
-    def resolve_ambush_interception(self, target: 'General', damage: int) -> Tuple['General', int]:
-        """隐藏伏兵替友军承受普攻的一半伤害，并与目标交换位置。"""
-        if target not in self.generals:
-            return target, damage
+    def resolve_ambush_interception(self, attacker: 'General', target: 'General', damage: int) -> int:
+        """伏兵反击：若目标相邻格子有隐藏伏兵，攻击者受到一半伤害的反击。
 
+        新机制：
+        - 邻格（上下左右+对角线）的隐藏伏兵可以反击
+        - 反击伤害 = 造成伤害的一半
+        - 每局每个伏兵只能触发一次
+        - 不再交换位置
+        """
+        if target not in self.generals:
+            return damage
+
+        # 获取目标的位置
+        target_pos = self.get_general_position(target)
+        if not target_pos:
+            return damage
+        tr, tc = target_pos
+
+        # 查找邻格中可触发反击的隐藏伏兵
         for general in self.get_alive_generals():
-            if general == target or not general.has_passive_skill("伏兵"):
+            if general == target:
                 continue
             ambush_passive = general.get_passive_skill("伏兵")
-            if not ambush_passive.is_hidden:
+            if not ambush_passive or not ambush_passive.can_counter():
                 continue
 
-            self.swap_general_positions(general, target)
-            ambush_passive.reveal_after_skill_use()
-            intercepted_damage = int(damage / 2 + 0.5)
-            return general, max(1, intercepted_damage)
+            # 检查是否与目标相邻（8方向：上下左右+对角线）
+            ambush_pos = self.get_general_position(general)
+            if not ambush_pos:
+                continue
+            ar, ac = ambush_pos
+            if max(abs(tr - ar), abs(tc - ac)) != 1:
+                continue  # 不相邻
 
-        return target, damage
+            # 触发反击！
+            counter_damage = max(1, damage // 2)
+            ambush_passive.trigger_counter()
+            attacker.take_damage(counter_damage, general, "ambush_counter")
+            # 只触发一个伏兵的反击
+            break
+
+        return damage
 
     def get_front_target_in_column(self, col: int) -> Optional['General']:
         """获取指定列最前方且可被普攻选中的目标。"""

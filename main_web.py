@@ -26,7 +26,10 @@ from game_data.skills_config import ALL_SKILLS
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src", "ui", "static")
 ASSETS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 GENERALS_IMG_DIR = os.path.join(ASSETS_DIR, "images", "generals")
+GENERALS_WEBP_DIR = os.path.join(ASSETS_DIR, "images", "generals_webp")
+GENERALS_FULL_DIR = os.path.join(ASSETS_DIR, "images", "generals_full")
 BG_DIR = os.path.join(ASSETS_DIR, "images", "backgrounds")
+BG_WEBP_DIR = os.path.join(ASSETS_DIR, "images", "backgrounds_webp")
 
 MIME = {
     ".html": "text/html; charset=utf-8",
@@ -34,8 +37,19 @@ MIME = {
     ".js":   "application/javascript; charset=utf-8",
     ".png":  "image/png",
     ".jpg":  "image/jpeg",
+    ".webp": "image/webp",
     ".ico":  "image/x-icon",
     ".json": "application/json",
+}
+
+# 静态资源缓存时间（秒）
+CACHE_MAX_AGE = {
+    ".png": 604800,   # 7 天
+    ".jpg": 604800,
+    ".webp": 604800,
+    ".css": 3600,     # 1 小时
+    ".js": 3600,
+    ".html": 0,       # 不缓存 HTML
 }
 
 
@@ -52,6 +66,9 @@ class GameState:
         self.cost_limit = 8.0
         self.pool_p1 = []  # 玩家1的独立选将池
         self.pool_p2 = []  # 玩家2的独立选将池
+        self.dice_p1 = 0   # 玩家1骰子值
+        self.dice_p2 = 0   # 玩家2骰子值
+        self.compensation = ""  # 后手补偿说明
 
     def _make_pool(self, chosen_data):
         """Generate one player's draft pool from already selected raw general data."""
@@ -87,6 +104,10 @@ class GameState:
         result = {"phase": self.phase, "event": self.last_event,
                   "turn": self.turn_count, "winner": self.winner,
                   "cost_limit": self.cost_limit}
+        if self.dice_p1 or self.dice_p2:
+            result["d1"] = self.dice_p1
+            result["d2"] = self.dice_p2
+            result["compensation"] = self.compensation
         if self.battle_system:
             current_team = self.battle_system.current_side
             result["current_team"] = "p1" if current_team == c.player1.team else "p2"
@@ -126,6 +147,8 @@ class GameState:
                 "name": g.name, "id": g.general_id,
                 "hp": g.current_hp, "maxHp": g.max_hp,
                 "force": g.force, "intelligence": g.intelligence,
+                "effective_force": g.get_effective_force(),
+                "effective_intelligence": g.get_effective_intelligence(),
                 "alive": g.is_alive,
                 "row": pos[0] if pos else -1, "col": pos[1] if pos else -1,
                 "skill": g.active_skill.name if g.active_skill else "",
@@ -133,6 +156,12 @@ class GameState:
                 "cooldown": g.active_skill_cooldown,
                 "image": g.image_file or "",
                 "attributes": [a.value for a in (g.attribute or [])],
+                "_ambushHidden": g.get_passive_skill("伏兵").is_hidden if g.has_passive_skill("伏兵") else False,
+                "_ambushTriggered": g.get_passive_skill("伏兵").triggered if g.has_passive_skill("伏兵") else False,
+                "_hasAttacked": g._has_attacked_this_turn,
+                "_hasUsedSkill": g._has_used_skill_this_turn,
+                "_hasSpeedJudgment": g.has_buff_type("attack_speed_judgment"),
+                "_hasSpeedRequired": g.has_debuff_type("attack_speed_required"),
             })
         return {
             "name": p.name,
@@ -188,12 +217,10 @@ def handle_api(path, body, handler):
                       if gen.general_id == p["general_id"]), None)
             if g:
                 target_player.team.position_general(g, p["row"], p["col"])
-        if positions:
-            STATE.last_event = f"{target_player.name}已更新布阵"
-            return STATE.to_json()
+        # 始终执行阶段切换
         if STATE.phase == "formation_p1":
             STATE.phase = "formation_p2"
-            STATE.last_event = "玩家1布阵完成"
+            STATE.last_event = "玩家1布阵完成，轮到玩家2布阵"
         else:
             STATE.phase = "dice"
             STATE.last_event = "布阵完成，准备掷骰"
@@ -205,12 +232,23 @@ def handle_api(path, body, handler):
         d2 = random.randint(1, 6)
         if d1 > d2:
             c.first_player, c.second_player = c.player1, c.player2
-        else:
+        elif d2 > d1:
             c.first_player, c.second_player = c.player2, c.player1
+        else:
+            # 平局则重掷
+            d1 = random.randint(1, 6)
+            d2 = random.randint(1, 6)
+            if d1 > d2:
+                c.first_player, c.second_player = c.player1, c.player2
+            else:
+                c.first_player, c.second_player = c.player2, c.player1
         c.current_player = c.first_player
         # 后手补偿
         c.second_player.team.max_morale += 2
         c.second_player.team.current_morale += 2
+        STATE.dice_p1 = d1
+        STATE.dice_p2 = d2
+        STATE.compensation = f"{c.second_player.name} 后手，士气上限+2"
         STATE.phase = "battle"
         STATE.last_event = f"{c.first_player.name} 先手！骰子: {d1} vs {d2}"
         STATE.turn_count = 0
@@ -238,18 +276,22 @@ def handle_api(path, body, handler):
             STATE.last_event = f"战斗结束，{STATE.winner} 获胜"
             return STATE.to_json()
 
+        # 回合结束：清理当前方过期效果后切换
+        bs.current_side.update_effects()
         bs._end_turn_cleanup()
         bs._switch_to_next_player()
         bs.turn_count += 1
         STATE.turn_count = bs.turn_count
+        # 新回合方也更新效果（防栅重建等）
         bs.current_side.update_effects()
         current_player = c.player1.name if bs.current_side == c.player1.team else c.player2.name
         STATE.last_event = f"第{STATE.turn_count}回合，轮到{current_player}行动"
         return STATE.to_json()
 
-    # POST /api/battle/skill -> {"general_id": 1} or legacy {"general_index": 0}
+    # POST /api/battle/skill -> {"general_id": 1}
     if path == "/api/battle/skill" and STATE.battle_system:
         bs = STATE.battle_system
+        from src.skills.skill_base import TargetType
         caster = None
         gid = body.get("general_id", None)
         if gid is not None:
@@ -257,8 +299,12 @@ def handle_api(path, body, handler):
                 gid = int(gid)
             except (TypeError, ValueError):
                 gid = None
-            caster = next((g for g in bs.current_side.get_alive_generals()
-                           if g.general_id == gid), None)
+            # 从双方队伍中查找施法者（不只是当前方）
+            for team in [bs.team1, bs.team2]:
+                caster = next((g for g in team.get_alive_generals()
+                              if g.general_id == gid), None)
+                if caster:
+                    break
         else:
             idx = body.get("general_index", -1)
             alive = bs.current_side.get_alive_generals()
@@ -266,22 +312,53 @@ def handle_api(path, body, handler):
                 caster = alive[idx]
 
         if caster and caster.can_use_active_skill():
-            from src.skills.skill_base import TargetType
+            if not caster.can_use_skill():
+                STATE.last_event = f"{caster.name} 本回合已使用过技能"
+                return STATE.to_json()
             tt = caster.active_skill.target_type
+            # 确定施法者所属队伍（用于士气扣除和目标选择）
+            caster_team = (bs.team1 if caster in bs.team1.get_alive_generals()
+                          else bs.team2)
             if tt == TargetType.SELF:
                 targets = [caster]
+            elif tt == TargetType.SINGLE_ALLY:
+                # 选己方武力最高者（若无则选自己）
+                allies = caster.get_team(bs).get_alive_generals() if hasattr(caster, 'get_team') else bs.current_side.get_alive_generals()
+                if not allies:
+                    # 尝试从双方确定所属队伍
+                    allies = (bs.team1.get_alive_generals() if caster in bs.team1.get_alive_generals()
+                              else bs.team2.get_alive_generals())
+                targets = [max(allies, key=lambda g: g.get_effective_force())] if allies else [caster]
             elif tt == TargetType.ALL_ALLIES:
-                targets = bs.current_side.get_alive_generals()
-            else:
-                enemy = bs._get_enemy_team().get_alive_generals()
+                targets = caster_team.get_alive_generals()
+            elif tt in (TargetType.SINGLE_ENEMY, TargetType.FRONT_ROW_ENEMY, TargetType.BACK_ROW_ENEMY, TargetType.RANDOM_ENEMY):
+                enemy_team = bs.team2 if caster_team == bs.team1 else bs.team1
+                enemy = enemy_team.get_alive_generals()
+                if tt == TargetType.FRONT_ROW_ENEMY:
+                    enemy = enemy_team.get_front_row_generals() if hasattr(enemy_team, 'get_front_row_generals') else enemy
                 targets = [enemy[0]] if enemy else []
-            result = caster.use_active_skill(targets, bs.battle_context, bs.current_side)
-            STATE.last_event = f"{caster.name} 使用 {caster.active_skill.name}" if result.get("success") else result.get("message", "技能失败")
+            elif tt == TargetType.ALL_ENEMIES:
+                enemy_team = bs.team2 if caster_team == bs.team1 else bs.team1
+                targets = enemy_team.get_alive_generals()
+            elif tt == TargetType.AREA_ENEMY:
+                enemy_team = bs.team2 if caster_team == bs.team1 else bs.team1
+                targets = enemy_team.get_alive_generals()[:2]
+            else:
+                enemy_team = bs.team2 if caster_team == bs.team1 else bs.team1
+                targets = enemy_team.get_alive_generals()[:1]
+            result = caster.use_active_skill(targets, bs.battle_context, caster_team)
+            STATE.last_event = f"{caster.name} 使用 {caster.active_skill.name}" if result.get("success") else (result.get("message") or "技能失败")
+            if result.get("success"):
+                detail = result.get("details", [])
+                if detail:
+                    effects = "; ".join(d.get("effect", "") for d in detail[:3] if d.get("effect"))
+                    if effects:
+                        STATE.last_event += f"：{effects}"
             if bs._is_game_over():
                 STATE.phase = "over"
                 STATE.winner = bs._determine_winner()
         else:
-            STATE.last_event = "该武将无法使用技能"
+            STATE.last_event = "该武将无法使用技能（冷却中、已阵亡或士气不足）"
         return STATE.to_json()
 
     # POST /api/battle/attack -> {"attacker_id": 1, "target_id": 2} or legacy indexes
@@ -319,16 +396,34 @@ def handle_api(path, body, handler):
                     target = legal_targets[t]
 
         if attacker and target:
-            dmg = attacker.attack(target)
-            STATE.last_event = f"{attacker.name} 普攻 {target.name} [-{dmg}]"
+            if not attacker.can_attack():
+                STATE.last_event = f"{attacker.name} 本回合已普攻过，不可再次攻击"
+                return STATE.to_json()
+            target_hp_before = target.current_hp
+            guess = body.get("guess", None)  # 攻速判定奇偶猜测
+            target_pos_before = (c.player1.team.get_general_position(target) or
+                                c.player2.team.get_general_position(target))
+            dmg = attacker.attack(target, guess)
+            # 检查是否发生了伏兵替位（目标位置变了）
+            target_pos_after = (c.player1.team.get_general_position(target) or
+                               c.player2.team.get_general_position(target))
+            pos_changed = (target_pos_before != target_pos_after)
+            if dmg == 0:
+                STATE.last_event = f"{attacker.name} 攻击 {target.name}，但被防栅/护盾挡下"
+            elif pos_changed:
+                STATE.last_event = f"{attacker.name} 攻击触发伏兵替位！{target.name} 受 {dmg} 点伤害"
+            else:
+                STATE.last_event = f"{attacker.name} 普攻 {target.name} [-{dmg}]"
             if not target.is_alive:
-                enemy_team.remove_general_from_formation(target)
-                STATE.last_event += f" {target.name} 阵亡"
+                STATE.last_event += f" {target.name} 阵亡！"
+            # 检查魅力反弹是否击杀了攻击者
+            if not attacker.is_alive:
+                STATE.last_event += f" {attacker.name} 被魅力反噬阵亡！"
             if bs._is_game_over():
                 STATE.phase = "over"
                 STATE.winner = bs._determine_winner()
         else:
-            STATE.last_event = "请选择合法的普攻目标"
+            STATE.last_event = "请选择合法的普攻目标（只能攻击敌方前排）"
         return STATE.to_json()
 
     # GET /api/state
@@ -366,18 +461,30 @@ class GameServer(BaseHTTPRequestHandler):
         if p.startswith("/api/"):
             self._json(handle_api(p, {}, self))
             return
-        # Static files
+        # Static files — check multiple directories
         fp = os.path.join(WEB_DIR, p.lstrip("/"))
-        if not os.path.exists(fp) and p.endswith((".png", ".jpg")):
-            # Try generals dir
-            fp = os.path.join(GENERALS_IMG_DIR, os.path.basename(p))
-        if not os.path.exists(fp) and p.endswith((".png", ".jpg")):
-            # Try backgrounds dir
-            fp = os.path.join(BG_DIR, os.path.basename(p))
+        # Try WebP versions first for images (smaller)
+        img_dirs = [GENERALS_WEBP_DIR, GENERALS_FULL_DIR, GENERALS_IMG_DIR, BG_WEBP_DIR, BG_DIR]
+        for d in img_dirs:
+            if os.path.exists(fp) and os.path.isfile(fp):
+                break
+            if p.endswith((".png", ".jpg", ".webp")):
+                alt = os.path.join(d, os.path.basename(p).replace(".png", ".webp").replace(".jpg", ".webp"))
+                if os.path.exists(alt) and os.path.isfile(alt):
+                    fp = alt; break
+                alt2 = os.path.join(d, os.path.basename(p))
+                if os.path.exists(alt2) and os.path.isfile(alt2):
+                    fp = alt2; break
         if os.path.exists(fp) and os.path.isfile(fp):
             ext = os.path.splitext(fp)[1]
             self.send_response(200)
             self.send_header("Content-Type", MIME.get(ext, "application/octet-stream"))
+            # Cache headers
+            cache_age = CACHE_MAX_AGE.get(ext, 0)
+            if cache_age > 0:
+                self.send_header("Cache-Control", f"public, max-age={cache_age}")
+            else:
+                self.send_header("Cache-Control", "no-cache")
             self.end_headers()
             with open(fp, "rb") as f:
                 self.wfile.write(f.read())

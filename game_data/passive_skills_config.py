@@ -200,32 +200,56 @@ class RevivePassive(PassiveSkill):
 
 
 class AmbushPassive(PassiveSkill):
-    """伏兵被动技能"""
-    
+    """伏兵被动技能
+
+    机制（重构版）：
+    - 隐藏状态下不可被普攻直接选中
+    - 相邻格子的友军被普攻时，攻击者受到伤害一半的反击伤害
+    - 每局只能触发一次
+    - 使用主动技能后破隐（失去伏兵效果）
+    - 若所有队友阵亡时仍未触发，效果自动丧失
+    """
+
     def __init__(self):
         super().__init__(
             skill_id="ambush_passive",
             name="伏兵",
-            description="未发动技能前不会被普攻选中；可替友军承受一半普攻伤害并破隐",
+            description="不可被普攻选中；邻格友军被攻时反击伤害的一半，每局一次",
             attribute_type="AMBUSH"
         )
-        self.is_hidden = True  # 隐藏状态
-    
+        self.is_hidden = True  # 隐藏状态（不可被普攻选中）
+        self.triggered = False  # 是否已触发反击（每局一次）
+
     def check_auto_reveal(self, team_generals):
-        """检查是否需要自动破隐"""
-        return
-    
+        """检查是否需要自动破隐（队友全灭则失效）"""
+        if not self.triggered and not self.is_hidden:
+            return
+        # 检查是否还有其他存活的友军
+        alive_allies = [g for g in team_generals
+                       if g.is_alive and g.has_passive_skill("伏兵") is not self]
+        if not alive_allies:
+            self.is_hidden = False  # 队友死光，自动失去效果
+
     def has_ambush_attribute(self, general):
         """检查武将是否有伏兵属性"""
         from src.models.general import Attribute
         return Attribute.AMBUSH in general.attribute
-    
+
     def can_be_targeted(self, caster, team_generals) -> bool:
-        """检查是否可以被选中"""
+        """检查是否可以被选中（隐藏时不可直接选中）"""
         return not self.is_hidden
-    
+
+    def can_counter(self):
+        """是否可以触发反击"""
+        return self.is_hidden and not self.triggered
+
+    def trigger_counter(self):
+        """触发反击，标记为已使用"""
+        self.triggered = True
+        self.is_hidden = False  # 反击后破隐
+
     def reveal_after_skill_use(self):
-        """使用技能后破隐"""
+        """使用主动技能后破隐（失去伏兵保护）"""
         self.is_hidden = False
 
 

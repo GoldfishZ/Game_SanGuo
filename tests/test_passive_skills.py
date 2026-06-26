@@ -242,26 +242,36 @@ def test_ambush_passive():
     else:
         print("   ❌ 伏兵隐藏状态异常")
 
-    # 隐藏伏兵替友军承受普攻一半伤害，并破隐
+    # 隐藏伏兵：邻格友军被攻时，对攻击者造成一半伤害的反击
     team = Team("伏兵测试队")
     ambush_general.is_alive = True
     normal_general.is_alive = True
     team.add_general(normal_general)
     team.add_general(ambush_general)
-    team.position_general(normal_general, 0, 0)
-    team.position_general(ambush_general, 1, 0)
+    team.position_general(normal_general, 0, 0)  # 前排
+    team.position_general(ambush_general, 1, 0)   # 中坚，与 normal 相邻
     enemy = General(1009, "敌人", Camp.WEI, Rarity.COMMON, 1.0, 8, 2)
+    enemy_hp_before = enemy.current_hp
 
-    damage = enemy.attack(normal_general)
-    print(f"   伏兵替位承伤: {damage}")
+    attacker_dmg = enemy.attack(normal_general)
+    print(f"   攻击者对目标造成伤害: {attacker_dmg}")
     print(f"   普通武将生命: {normal_general.current_hp}/{normal_general.max_hp}")
     print(f"   伏兵生命: {ambush_general.current_hp}/{ambush_general.max_hp}")
     print(f"   伏兵隐藏状态: {ambush_general.get_passive_skill('伏兵').is_hidden}")
+    print(f"   伏兵已触发: {ambush_general.get_passive_skill('伏兵').triggered}")
+    print(f"   攻击者生命: {enemy.current_hp}/{enemy.max_hp} (受反击前: {enemy_hp_before})")
 
-    assert damage == 3
-    assert normal_general.current_hp == normal_general.max_hp
-    assert ambush_general.current_hp == ambush_general.max_hp - 3
-    assert not ambush_general.get_passive_skill("伏兵").is_hidden
+    # 新机制验证：
+    # 1. 目标仍然受伤（不再替位）
+    assert normal_general.current_hp < normal_general.max_hp, "目标应受到伤害"
+    # 2. 伏兵生命不变（不替位承伤）
+    assert ambush_general.current_hp == ambush_general.max_hp, "伏兵不应承伤"
+    # 3. 攻击者受到反击伤害（一半伤害）
+    assert enemy.current_hp < enemy_hp_before, f"攻击者应受反击伤害: {enemy.current_hp} < {enemy_hp_before}"
+    # 4. 伏兵破隐并标记已触发
+    assert not ambush_general.get_passive_skill("伏兵").is_hidden, "伏兵应破隐"
+    assert ambush_general.get_passive_skill("伏兵").triggered, "伏兵应标记已触发"
+    print("   ✅ 伏兵邻格反击机制生效！")
 
 
 def main():

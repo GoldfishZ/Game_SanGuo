@@ -132,6 +132,8 @@ class General:
         self.active_skill_cooldown = 0  # 主动技能当前冷却时间
         self.active_skill_usage_counts = {}  # 主动技能使用次数（按武将实例记录）
         self.last_attack_speed_judgment = None
+        self._has_attacked_this_turn = False  # 本回合是否已普攻
+        self._has_used_skill_this_turn = False  # 本回合是否已使用技能
 
         # 所属队伍弱引用（由 Team.add_general 设置，用于连环等需要团队信息的被动技能）
         self._team = None
@@ -297,39 +299,46 @@ class General:
         # 确保伤害大于0
         return max(1, damage)
     
-    def attack(self, target: 'General') -> int:
+    def attack(self, target: 'General', guess: str = None) -> int:
         """
-        攻击目标武将
-        
+        攻击目标武将（每回合每名武将只能调用一次）
+
         Args:
             target: 目标武将
-            
+            guess: 攻速判定时的奇偶猜测 ("奇" / "偶")，None 则由系统随机
+
         Returns:
             实际造成的伤害
         """
         if not self.is_alive or not target.is_alive:
             return 0
+        if self._has_attacked_this_turn:
+            return 0  # 本回合已普攻过，不可再次攻击
         forced_target = self.get_forced_attack_target()
         if forced_target is not None and target is not forced_target:
             return 0
         if self.has_buff_type("front_only_attack") and not self.can_attack_front_target(target):
             return 0
+        # 攻速限制判定（debuff：必须猜对才能普攻）
         if self.has_debuff_type("attack_speed_required"):
             self.consume_debuff_type("attack_speed_required")
-            judgment = odd_even_judgment()
+            judgment = odd_even_judgment(guess)
             self.last_attack_speed_judgment = judgment
             if not judgment["success"]:
+                self._has_attacked_this_turn = True
                 return 0
 
         actual_damage = self._perform_basic_attack_once(target)
 
+        # 攻速判定（buff：猜对则获得额外一次普攻）
         if self.has_buff_type("attack_speed_judgment"):
             self.consume_buff_type("attack_speed_judgment")
-            judgment = odd_even_judgment()
+            judgment = odd_even_judgment(guess)
             self.last_attack_speed_judgment = judgment
             if judgment["success"] and target.is_alive:
                 actual_damage += self._perform_basic_attack_once(target)
 
+        self._has_attacked_this_turn = True
         return actual_damage
 
     def _perform_basic_attack_once(self, target: 'General') -> int:
@@ -341,10 +350,10 @@ class General:
             bravery_passive = self.get_passive_skill("勇猛")
             damage = bravery_passive.trigger_on_attack(self, target, damage)
         
-        # 隐藏伏兵可替友军承受普攻的一半伤害，并与目标交换位置
+        # 伏兵反击：相邻隐藏伏兵可对攻击者造成反击伤害
         if target._team:
-            target, damage = target._team.resolve_ambush_interception(
-                target, damage
+            target._team.resolve_ambush_interception(
+                self, target, damage
             )
         
         actual_damage = target.take_damage(damage, self, "basic_attack")
@@ -458,7 +467,11 @@ class General:
         return target in target._team.get_attackable_targets()
     
     def update_effects(self):
-        """更新效果持续时间和技能冷却"""
+        """更新效果持续时间和技能冷却（每回合开始时调用）"""
+        # 重置本回合攻击和技能状态
+        self._has_attacked_this_turn = False
+        self._has_used_skill_this_turn = False
+
         self.buffs = [buff for buff in self.buffs if buff['duration'] > 1]
         self.debuffs = [debuff for debuff in self.debuffs if debuff['duration'] > 1]
 
@@ -584,6 +597,14 @@ class General:
         
         return True
     
+    def can_attack(self) -> bool:
+        """检查本回合是否还可以普攻"""
+        return self.is_alive and not self._has_attacked_this_turn
+
+    def can_use_skill(self) -> bool:
+        """检查本回合是否还可以使用技能"""
+        return self.is_alive and not self._has_used_skill_this_turn
+
     def can_use_active_skill(self) -> bool:
         """检查是否可以使用主动技能"""
         if not self.is_alive:
@@ -633,6 +654,8 @@ class General:
         result["skill_name"] = self.active_skill.name
         result["caster"] = self.name
         result["morale_consumed"] = self.active_skill.morale_cost
+        if result.get("success"):
+            self._has_used_skill_this_turn = True
         if team:
             result["remaining_morale"] = team.current_morale
         
