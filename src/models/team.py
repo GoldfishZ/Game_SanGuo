@@ -89,18 +89,19 @@ class Team:
     
     def get_front_row_generals(self) -> List['General']:
         """
-        获取最前排的武将（按列计算）
-        
+        获取最前排的武将（按列计算），跳过已阵亡的武将
+
         Returns:
             List[General]: 最前排的武将列表
         """
         front_row_generals = []
-        
-        # 对每一列，找到最前排的武将
+
+        # 对每一列，找到最前排的存活武将
         for col in range(4):
             for row in range(3):
-                if self.formation[row][col] is not None:
-                    front_row_generals.append(self.formation[row][col])
+                general = self.formation[row][col]
+                if general is not None and general.is_alive:
+                    front_row_generals.append(general)
                     break  # 找到该列最前排的武将就停止
                     
         return front_row_generals

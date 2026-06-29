@@ -292,12 +292,12 @@ class General:
         else:
             # 武力小于等于目标武力：伤害 = (攻击方武力+智力) - (目标武力+智力)
             damage = (attacker_force + attacker_intelligence) - (target_force + target_intelligence)
-            # 武力低于对方的情况下，确保伤害不超过3
-            if damage >= 3:
-              damage = 3
-        
-        # 确保伤害大于0
-        return max(1, damage)
+            # 武力低于对方的情况下，确保伤害不超过5
+            if damage >= 5:
+              damage = 5
+
+        # 确保最低伤害为2
+        return max(2, damage)
     
     def attack(self, target: 'General', guess: str = None) -> int:
         """

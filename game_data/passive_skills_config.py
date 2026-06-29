@@ -109,34 +109,27 @@ class RecruitPassive(PassiveSkill):
 
 
 class FencePassive(PassiveSkill):
-    """防栅被动技能"""
-    
+    """防栅被动技能（一次性，破碎后不再重建）"""
+
     def __init__(self):
         super().__init__(
             skill_id="fence_passive",
             name="防栅",
-            description="抵挡一次普攻。被攻破后两回合若武将仍存活，则自动重建",
+            description="抵挡一次普攻，破碎后不再重建",
             attribute_type="FENCE"
         )
         self.is_active = True  # 防栅状态
-        self.rebuild_turns_remaining = 0
-    
+
     def trigger_on_receive_damage(self, caster, damage, damage_source: str = "basic_attack") -> int:
         """在受到伤害时触发"""
         if damage_source == "basic_attack" and self.is_active:
             self.is_active = False
-            self.rebuild_turns_remaining = 2
             return 0  # 伤害完全抵挡
         return damage  # 防栅失效，正常受到伤害
 
     def update_rebuild(self, caster) -> None:
-        """回合开始时更新防栅重建倒计时。"""
-        if self.is_active or not caster.is_alive:
-            return
-        if self.rebuild_turns_remaining > 0:
-            self.rebuild_turns_remaining -= 1
-        if self.rebuild_turns_remaining <= 0:
-            self.is_active = True
+        """回合开始时空操作（不再重建防栅）"""
+        pass
 
 
 class ChainPassive(PassiveSkill):

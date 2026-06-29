@@ -1,5 +1,12 @@
 // ===== STATE =====
+console.log("=== 三国武将卡牌游戏 v5 已加载 ===");
 let G = null;
+
+// 快捷状态栏更新
+function setStatus(msg) {
+  var el = document.getElementById("battle-status");
+  if (el) el.textContent = msg;
+}
 let selectedGenerals = [];
 let selectedFormGen = null;
 let battlePhase = "select";
@@ -394,18 +401,17 @@ function renderBattleGrid(elemId, p, isAlly) {
   for (var r = 0; r < 3; r++) {
     for (var c = 0; c < 4; c++) {
       var g = grid[r][c];
+      // P1 (bside1): 前排(row=0)应在视觉底部(grid-row:3)，后排(row=2)在视觉顶部(grid-row:1)
+      // P2 (bside2): 前排(row=0)在视觉顶部(grid-row:1)，后排(row=2)在视觉底部(grid-row:3)
+      var gridRow = (elemId === "bside1-grid") ? (3 - r) : (r + 1);
       if (g) {
         var hpPct = g.maxHp > 0 ? (g.hp/g.maxHp*100) : 0;
         var hpClass = hpPct > 60 ? "" : (hpPct > 30 ? "warn" : "danger");
         var imgSrc = g.image ? "/generals/" + g.image : "";
         var selected = isAlly && selectedAttacker && selectedAttacker.general.id === g.id;
-        // 已行动武将仍可点击选中，但攻击/技能按钮会被锁定
         var hasActed = isAlly && (g._hasAttacked || g._hasUsedSkill);
-        var clickable = isAlly || battlePhase === "target";
-        var clickHandler = isAlly ? "onBattleAllyCell(" + r + "," + c + ")" : "onBattleEnemyCell(" + r + "," + c + ")";
         var attrs = g.attributes || [];
 
-        // Build attribute CSS classes
         var attrParts = [];
         if (attrs.indexOf("防栅") >= 0) {
           if (g._fenceBroken || g.hp < g.maxHp) { attrParts.push("fence-broken"); }
@@ -421,21 +427,21 @@ function renderBattleGrid(elemId, p, isAlly) {
           else if (g._ambushHidden) { attrParts.push("ambush-hidden"); }
           else { attrParts.push("ambush-revealed"); }
         }
-        // 本回合已行动过的武将（仍可点击，但按钮会锁定）
         if (hasActed) { attrParts.push("acted"); }
         if (!g.alive) attrParts.push("dead");
         var attrClass = attrParts.length ? " " + attrParts.join(" ") : "";
 
-        // Use data-eff-force/data-eff-intel for real-time stats (with buffs/debuffs)
         var effForce = g.effective_force !== undefined ? g.effective_force : (g.force||0);
         var effIntel = g.effective_intelligence !== undefined ? g.effective_intelligence : (g.intelligence||0);
 
-        cells += '<div class="bcell' + (selected?' selected':'') + (clickable?'':' locked') + attrClass + '"' +
+        // 不再使用 onclick 属性，改用事件委托（见 initBattleDelegation）
+        cells += '<div class="bcell' + (selected?' selected':'') + (!isAlly && battlePhase !== "target"?' locked':'') + attrClass + '"' +
           ' data-name="' + g.name + '" data-id="' + g.id + '" data-row="' + r + '" data-col="' + c + '"' +
+          ' data-isally="' + (isAlly ? "1" : "0") + '"' +
           ' data-force="' + effForce + '" data-intel="' + effIntel + '"' +
           ' data-skill="' + (g.skill||'') + '" data-skill-desc="' + (g.skill_desc||'') + '" data-attrs="' + (attrs.join(',')) + '"' +
           ' data-tooltip="<b>' + g.name + '</b> 武' + effForce + ' 智' + effIntel + ' HP ' + g.hp + '/' + g.maxHp + '<br>技能：' + (g.skill||'无') + '<br>' + (g.skill_desc||'') + '<br>属性：' + (attrs.join(' · ')||'无属性') + '"' +
-          ' onclick="' + (clickable?clickHandler:'') + '">' +
+          ' style="grid-row:' + gridRow + ';grid-column:' + (c+1) + '">' +
           (imgSrc ? '<img src="' + imgSrc + '">' : '') +
           '<div class="bcell-tip"><img src="' + (imgSrc||'') + '"><div class="tip-name">' + g.name + '</div><div class="tip-stat">武' + effForce + ' 智' + effIntel + ' | ' + (g.skill||'无') + '</div><div class="tip-attr">' + (attrs.join(' · ')||'无属性') + '</div></div>' +
           '<div class="cname">' + (g.alive?g.name:'阵亡') + '</div>' +
@@ -443,12 +449,38 @@ function renderBattleGrid(elemId, p, isAlly) {
           '<div class="hpbar"><div class="hpf ' + hpClass + '" style="width:' + (g.alive?hpPct:0) + '%"></div></div>' +
         '</div>';
       } else {
-        cells += '<div class="bcell empty" style="font-size:9px;color:#3a2e1c">—</div>';
+        cells += '<div class="bcell empty" style="grid-row:' + gridRow + ';grid-column:' + (c+1) + ';font-size:9px;color:#3a2e1c">—</div>';
       }
     }
   }
   document.getElementById(elemId).innerHTML = cells;
 }
+
+// ===== 事件委托：处理武将格子点击（防连点）=====
+var _battleClickLock = false;
+function initBattleDelegation() {
+  document.addEventListener("click", function(e) {
+    if (_battleClickLock) return;
+    var cell = e.target.closest(".bcell");
+    if (!cell) return;
+    if (cell.classList.contains("locked")) return;
+    if (cell.classList.contains("empty")) return;
+    if (cell.classList.contains("dead")) return;
+
+    var r = parseInt(cell.getAttribute("data-row"));
+    var c = parseInt(cell.getAttribute("data-col"));
+    if (isNaN(r) || isNaN(c)) return;
+
+    var isAlly = cell.getAttribute("data-isally") === "1";
+    _battleClickLock = true;
+    if (isAlly) {
+      onBattleAllyCell(r, c).finally(function() { _battleClickLock = false; });
+    } else {
+      onBattleEnemyCell(r, c).finally(function() { _battleClickLock = false; });
+    }
+  });
+}
+initBattleDelegation();
 
 function updateBattlePhaseUI() {
   var phTag = battlePhase === "target" ? "ph-target" : (selectedAttacker ? "ph-attack" : "ph-skill");
@@ -479,6 +511,14 @@ function updateBattlePhaseUI() {
     skillBtn.style.pointerEvents = canSkill ? "auto" : "none";
     attackBtn.style.opacity = canAttack ? "1" : ".4";
     attackBtn.style.pointerEvents = canAttack ? "auto" : "none";
+    // 日志
+    if (!canSkill && selected && selected.skill && selected.skill !== "无") {
+      var reason = selected.cooldown ? "冷却中" : (hasUsedSkill ? "已用技能" : (morale < 2 ? "士气不足" : "不可用"));
+      setStatus(selected.name + " 的 " + selected.skill + " 不可用：" + reason);
+    }
+    if (hasAttacked && selected) {
+      // already shown via tooltip
+    }
 
     if (hasUsedSkill && selected.skill) {
       skillBtn.setAttribute("data-tooltip", selected.skill + " — 本回合已使用过技能");
@@ -573,34 +613,31 @@ async function chooseAttack() {
 }
 
 async function useSkill() {
-  if (!selectedAttacker) return;
-  var skillName = selectedAttacker.general.skill || "技能";
+  if (!selectedAttacker) { setStatus("未选择武将，无法使用技能"); return; }
+  var sk = selectedAttacker.general.skill;
+  if (!sk || sk === "无") { setStatus(selectedAttacker.general.name + " 没有主动技能"); return; }
+  if (selectedAttacker.general.cooldown) { setStatus(sk + " 冷却中 (剩余" + selectedAttacker.general.cooldown + "回合)"); return; }
+  if (selectedAttacker.general._hasUsedSkill) { setStatus(selectedAttacker.general.name + " 本回合已使用过技能"); return; }
+
+  setStatus("正在使用 " + sk + "...");
+  var skillName = sk;
   var skillType = detectSkillType(skillName);
 
-  // 技能施放者特效
-  var cellEl = document.querySelector('#bside1-grid .bcell[data-row="' + selectedAttacker.row + '"][data-col="' + selectedAttacker.col + '"]');
-  if (!cellEl) {
-    cellEl = document.querySelector('#bside2-grid .bcell[data-row="' + selectedAttacker.row + '"][data-col="' + selectedAttacker.col + '"]');
-  }
+  // 确定施法者所在面板和敌方面板
+  var aIsP1 = (selectedAttacker.general.id === (findBattleGeneral(G.p1, selectedAttacker.row, selectedAttacker.col)||{}).id);
+  var allyGrid = aIsP1 ? "#bside1-grid" : "#bside2-grid";
+  var enemyGrid = aIsP1 ? "#bside2-grid" : "#bside1-grid";
+
+  // 施法者特效
+  var cellEl = document.querySelector(allyGrid + ' .bcell[data-row="' + selectedAttacker.row + '"][data-col="' + selectedAttacker.col + '"]');
   if (cellEl) animSkill(cellEl, skillName, "", skillType);
 
   // 记录敌方战前 HP
   var enemyBefore = {};
-  var enemyCells = document.querySelectorAll("#bside2-grid .bcell");
-  enemyCells.forEach(function(ec) {
+  document.querySelectorAll(enemyGrid + " .bcell").forEach(function(ec) {
     var n = ec.getAttribute("data-name");
     var hpText = ec.querySelector(".chp");
     if (n && hpText) {
-      var parts = hpText.textContent.split("/");
-      enemyBefore[n] = parseInt(parts[0]) || 0;
-    }
-  });
-  // Also check P1 enemies (if caster is P2)
-  var allyCells = document.querySelectorAll("#bside1-grid .bcell");
-  allyCells.forEach(function(ec) {
-    var n = ec.getAttribute("data-name");
-    var hpText = ec.querySelector(".chp");
-    if (n && hpText && !(n in enemyBefore)) {
       var parts = hpText.textContent.split("/");
       enemyBefore[n] = parseInt(parts[0]) || 0;
     }
@@ -610,35 +647,26 @@ async function useSkill() {
 
   // 技能执行后，对受损目标显示特效
   setTimeout(function() {
-    // 查找 HP 变化的目标
-    ["#bside2-grid .bcell", "#bside1-grid .bcell"].forEach(function(sel) {
-      document.querySelectorAll(sel).forEach(function(ec) {
-        var n = ec.getAttribute("data-name");
-        if (n && enemyBefore[n] !== undefined) {
-          var hpEl = ec.querySelector(".chp");
-          if (hpEl) {
-            var parts = hpEl.textContent.split("/");
-            var afterHp = parseInt(parts[0]) || 0;
-            var dmg = enemyBefore[n] - afterHp;
-            if (dmg > 0) {
-              // 对受损目标显示伤害数字和特效
-              var center = getCellCenter(ec);
-              if (skillType === "lightning") {
-                FX.lightningStrike(center.x, center.y);
-              } else if (skillType === "fire") {
-                FX.fireBurst(center.x, center.y);
-              }
-              spawnFloatNum(ec, dmg, "damage");
-              // 目标闪白
-              ec.classList.add("impact-flash");
-              setTimeout(function() { ec.classList.remove("impact-flash"); }, 400);
-            } else if (afterHp > enemyBefore[n]) {
-              // 治疗
-              spawnFloatNum(ec, afterHp - enemyBefore[n], "heal");
-            }
+    document.querySelectorAll(enemyGrid + " .bcell").forEach(function(ec) {
+      var n = ec.getAttribute("data-name");
+      if (n && enemyBefore[n] !== undefined) {
+        var hpEl = ec.querySelector(".chp");
+        if (hpEl) {
+          var parts = hpEl.textContent.split("/");
+          var afterHp = parseInt(parts[0]) || 0;
+          var dmg = enemyBefore[n] - afterHp;
+          if (dmg > 0) {
+            var center = getCellCenter(ec);
+            if (skillType === "lightning") { FX.lightningStrike(center.x, center.y); }
+            else if (skillType === "fire") { FX.fireBurst(center.x, center.y); }
+            spawnFloatNum(ec, dmg, "damage");
+            ec.classList.add("impact-flash");
+            setTimeout(function() { ec.classList.remove("impact-flash"); }, 400);
+          } else if (afterHp > enemyBefore[n]) {
+            spawnFloatNum(ec, afterHp - enemyBefore[n], "heal");
           }
         }
-      });
+      }
     });
   }, 100);
 
