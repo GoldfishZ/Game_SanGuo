@@ -1114,7 +1114,7 @@ class ThunderStrikeSkill(Skill):
         )
         self.strike_count = 2
 
-    def execute(self, caster, targets, battle_context):
+    def execute(self, caster, targets, battle_context, guess=None):
         caster_team = battle_context.get_team_for_general(caster)
         if caster_team is None:
             return {
@@ -1129,7 +1129,12 @@ class ThunderStrikeSkill(Skill):
             if caster_team == battle_context.team1
             else battle_context.team1
         )
-        block_positions, block_generals = self._select_target_block(enemy_team)
+        # 如果前端传入了已选区域目标，直接使用；否则自动选择最佳2x2块
+        if targets and len(targets) > 0 and all(hasattr(t, 'is_alive') for t in targets):
+            block_generals = [t for t in targets if t.is_alive and t._team == enemy_team]
+            block_positions = [(0, 0)]  # 前端传入时不需要block info
+        else:
+            block_positions, block_generals = self._select_target_block(enemy_team)
         if not block_generals:
             return {
                 "success": False,
@@ -1141,7 +1146,7 @@ class ThunderStrikeSkill(Skill):
         details = []
         total_damage = 0
         for target in self._select_strike_targets(block_generals):
-            judgment = odd_even_judgment()
+            judgment = odd_even_judgment(guess)  # 使用玩家选择的奇偶
             damage = 0
             if not judgment["success"]:
                 damage = self._calculate_thunder_damage(caster, target)

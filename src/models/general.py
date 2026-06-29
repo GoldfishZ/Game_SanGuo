@@ -615,7 +615,7 @@ class General:
             return False
         return True
     
-    def use_active_skill(self, targets: List['General'], battle_context, team=None) -> Dict:
+    def use_active_skill(self, targets: List['General'], battle_context, team=None, guess=None) -> Dict:
         """
         使用主动技能
         
@@ -647,7 +647,15 @@ class General:
         self.active_skill_cooldown = self.active_skill.cooldown
         
         # 执行技能效果
-        result = self.active_skill.execute(self, targets, battle_context)
+        if guess is not None and hasattr(self.active_skill, 'execute'):
+            import inspect
+            sig = inspect.signature(self.active_skill.execute)
+            if 'guess' in sig.parameters:
+                result = self.active_skill.execute(self, targets, battle_context, guess=guess)
+            else:
+                result = self.active_skill.execute(self, targets, battle_context)
+        else:
+            result = self.active_skill.execute(self, targets, battle_context)
         if result.get("success") and self.has_passive_skill("伏兵"):
             ambush_passive = self.get_passive_skill("伏兵")
             ambush_passive.reveal_after_skill_use()

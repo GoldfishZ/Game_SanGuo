@@ -695,6 +695,17 @@ function useSkill() {
   if (selectedAttacker.general.cooldown) { setStatus(sk + " 冷却中 (剩余" + selectedAttacker.general.cooldown + "回合)"); return; }
   if (selectedAttacker.general._hasUsedSkill) { setStatus(selectedAttacker.general.name + " 本回合已使用过技能"); return; }
 
+  // 区域选择类技能（雷击等）：先选区域再猜奇偶
+  var targetType = selectedAttacker.general._targetType || "";
+  var area = null;
+  var guess = null;
+  if (targetType === "AREA_ENEMY") {
+    area = await selectAreaForSkill();
+    if (!area) { return; }  // 取消
+    guess = await askOddEven("猜奇偶——猜错则敌方受雷击伤害");
+    if (!guess) { return; }
+  }
+
   setStatus("正在使用 " + sk + "...");
   var skillType = detectSkillType(sk);
   var aIsP1 = (G.current_team === "p1");
@@ -716,7 +727,10 @@ function useSkill() {
     }
   });
 
-  return call("/battle/skill", { general_id: selectedAttacker.general.id }).then(function(result) {
+  var body = { general_id: selectedAttacker.general.id };
+  if (area) { body.area_row = area.r; body.area_col = area.c; }
+  if (guess) { body.guess = guess; }
+  return call("/battle/skill", body).then(function(result) {
     if (!result) {
       setStatus("技能请求失败，请检查服务器连接");
       clearBattleSelection();
@@ -766,21 +780,73 @@ function skipPhase() {
   });
 }
 
-/** 奇偶选择弹窗 —— 攻速判定时弹出 */
-function askOddEven() {
+/** 奇偶选择弹窗 */
+function askOddEven(msg) {
+  msg = msg || "攻速判定——猜对则额外普攻一次";
   return new Promise(function(resolve) {
     var overlay = document.createElement("div");
     overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.8);z-index:400;display:flex;align-items:center;justify-content:center";
     overlay.innerHTML =
       '<div style="background:linear-gradient(180deg,#1a1410,#0b0906);border:2px solid var(--gold);border-radius:14px;padding:28px 36px;text-align:center;color:var(--text)">' +
       '<div style="font-size:20px;color:var(--gold);margin-bottom:8px">🎲 猜奇偶</div>' +
-      '<div style="font-size:14px;color:var(--muted);margin-bottom:20px">攻速判定——猜对则额外普攻一次</div>' +
+      '<div style="font-size:14px;color:var(--muted);margin-bottom:20px">' + msg + '</div>' +
       '<div style="display:flex;gap:16px;justify-content:center">' +
       '<div class="btn primary" style="font-size:18px;padding:12px 32px" onclick="this.closest(\'div\').parentElement._resolve(\'奇\')">奇</div>' +
       '<div class="btn" style="font-size:18px;padding:12px 32px" onclick="this.closest(\'div\').parentElement._resolve(\'偶\')">偶</div>' +
       '</div></div>';
     overlay._resolve = function(v) { overlay.remove(); resolve(v); };
     overlay.addEventListener("click", function(e) { if (e.target === overlay) { overlay.remove(); resolve(null); } });
+    document.body.appendChild(overlay);
+  });
+}
+
+/**
+ * 区域选择弹窗（雷击等 AREA_ENEMY 技能）
+ * 在敌方阵型上高亮可选的 2x2 区域，玩家点击选择
+ * @returns {Promise<{r: number, c: number}|null>}
+ */
+function selectAreaForSkill() {
+  return new Promise(function(resolve) {
+    var overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:400;display:flex;flex-direction:column;align-items:center;justify-content:center";
+
+    var enemyGrid = document.querySelector(G.current_team === "p1" ? "#bside2-grid" : "#bside1-grid");
+    if (!enemyGrid) { resolve(null); return; }
+
+    // 拷贝敌方网格到弹窗中
+    var gridClone = enemyGrid.cloneNode(true);
+    gridClone.style.margin = "0 auto";
+    gridClone.style.height = "auto";
+    gridClone.style.minHeight = "200px";
+    gridClone.style.position = "relative";
+
+    // 高亮所有可能的 2x2 区域起始角
+    var cells = gridClone.querySelectorAll(".bcell");
+    cells.forEach(function(cell) {
+      var r = parseInt(cell.getAttribute("data-row"));
+      var c = parseInt(cell.getAttribute("data-col"));
+      if (!isNaN(r) && !isNaN(c) && r < 2 && c < 3) {
+        // 左上角可以是 (0,0), (0,1), (0,2), (1,0), (1,1), (1,2)
+        cell.style.outline = "3px solid var(--gold-bright)";
+        cell.style.cursor = "pointer";
+        cell.style.zIndex = "10";
+        cell.onclick = function(e) {
+          e.stopPropagation();
+          overlay.remove();
+          resolve({ r: r, c: c });
+        };
+        cell.setAttribute("data-tooltip", "点击选择 2×2 落雷区域起始位置");
+      }
+    });
+
+    var wrapper = document.createElement("div");
+    wrapper.style.cssText = "background:rgba(10,8,6,.95);border:2px solid var(--gold);border-radius:14px;padding:20px;text-align:center;max-width:90vw";
+    wrapper.innerHTML = '<div style="font-size:18px;color:var(--gold);margin-bottom:8px">⚡ 选择 2×2 落雷区域</div>' +
+      '<div style="font-size:12px;color:var(--muted);margin-bottom:12px">点击敌方阵型中的格子作为落雷区左上角</div>';
+    wrapper.appendChild(gridClone);
+    overlay.appendChild(wrapper);
+
+    overlay.addEventListener("click", function() { overlay.remove(); resolve(null); });
     document.body.appendChild(overlay);
   });
 }

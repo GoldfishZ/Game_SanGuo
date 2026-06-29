@@ -162,6 +162,7 @@ class GameState:
                 "_hasUsedSkill": g._has_used_skill_this_turn,
                 "_hasSpeedJudgment": g.has_buff_type("attack_speed_judgment"),
                 "_hasSpeedRequired": g.has_debuff_type("attack_speed_required"),
+                "_targetType": g.active_skill.target_type.value if (g.active_skill and hasattr(g.active_skill, 'target_type')) else "",
             })
         return {
             "name": p.name,
@@ -342,11 +343,29 @@ def handle_api(path, body, handler):
                 targets = enemy_team.get_alive_generals()
             elif tt == TargetType.AREA_ENEMY:
                 enemy_team = bs.team2 if caster_team == bs.team1 else bs.team1
-                targets = enemy_team.get_alive_generals()[:2]
+                area_r = body.get("area_row", None)
+                area_c = body.get("area_col", None)
+                if area_r is not None and area_c is not None:
+                    # 前端选择了2x2区域——只取该区域内的存活武将
+                    try:
+                        area_r = int(area_r); area_c = int(area_c)
+                    except (TypeError, ValueError):
+                        area_r = area_c = None
+                    if area_r is not None:
+                        targets = [g for g in enemy_team.get_alive_generals()
+                                   if area_r <= g.get_position()[0] <= area_r + 1
+                                   and area_c <= g.get_position()[1] <= area_c + 1]
+                    else:
+                        targets = enemy_team.get_alive_generals()[:2]
+                else:
+                    # 未选区域——传空列表，技能内部自动选择最佳块
+                    targets = []
             else:
                 enemy_team = bs.team2 if caster_team == bs.team1 else bs.team1
                 targets = enemy_team.get_alive_generals()[:1]
-            result = caster.use_active_skill(targets, bs.battle_context, caster_team)
+            # 攻速判定猜奇偶（如雷击需要）
+            guess = body.get("guess", None)
+            result = caster.use_active_skill(targets, bs.battle_context, caster_team, guess=guess)
             STATE.last_event = f"{caster.name} 使用 {caster.active_skill.name}" if result.get("success") else (result.get("message") or "技能失败")
             if result.get("success"):
                 detail = result.get("details", [])
