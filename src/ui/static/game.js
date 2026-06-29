@@ -1,5 +1,5 @@
 // ===== STATE =====
-console.log("=== 三国武将卡牌游戏 v5 已加载 ===");
+console.log("=== 三国武将卡牌游戏 v6 已加载 ===");
 let G = null;
 
 // 快捷状态栏更新
@@ -545,7 +545,11 @@ async function onBattleAllyCell(r, c) {
   try {
     if (!G) { document.getElementById("battle-status").textContent = "游戏状态为空，请刷新页面"; return; }
     // 从双方面板查找武将（P1=bside1 始终在上半区）
-    var g = findBattleGeneral(G.p1, r, c) || findBattleGeneral(G.p2, r, c);
+    // 根据当前回合方确定搜索顺序，避免双方同位置时选错
+    var isP1Turn = (G.current_team === "p1");
+    var g = isP1Turn
+      ? (findBattleGeneral(G.p1, r, c) || findBattleGeneral(G.p2, r, c))
+      : (findBattleGeneral(G.p2, r, c) || findBattleGeneral(G.p1, r, c));
     if (!g) { document.getElementById("battle-status").textContent = "未找到该位置武将"; return; }
     selectedAttacker = {general: g, row: r, col: c};
     battlePhase = "action";
@@ -558,12 +562,16 @@ async function onBattleAllyCell(r, c) {
 
 async function onBattleEnemyCell(r, c) {
   if (battlePhase !== "target" || !selectedAttacker) return;
-  var target = findBattleGeneral(G.p2, r, c) || findBattleGeneral(G.p1, r, c);
-  if (!target) return;
+  // 搜索敌方优先（当前回合方的对方）
+  var isP1Turn = (G.current_team === "p1");
+  var target = isP1Turn
+    ? (findBattleGeneral(G.p2, r, c) || findBattleGeneral(G.p1, r, c))
+    : (findBattleGeneral(G.p1, r, c) || findBattleGeneral(G.p2, r, c));
+  if (!target) { setStatus("未找到目标武将"); return; }
 
-  // P1=bside1, P2=bside2: 根据目标所在阵营确定格子位置
-  var aIsP1 = (selectedAttacker.general.id === (findBattleGeneral(G.p1, selectedAttacker.row, selectedAttacker.col)||{}).id);
-  var tIsP1 = (target.id === (findBattleGeneral(G.p1, r, c)||{}).id);
+  // 用current_team判断身份，避免同位置武将混淆
+  var aIsP1 = isP1Turn;
+  var tIsP1 = !isP1Turn;
   var aCell = document.querySelector((aIsP1 ? '#bside1-grid' : '#bside2-grid') + ' .bcell[data-row="' + selectedAttacker.row + '"][data-col="' + selectedAttacker.col + '"]');
   var tCell = document.querySelector((tIsP1 ? '#bside1-grid' : '#bside2-grid') + ' .bcell[data-row="' + r + '"][data-col="' + c + '"]');
 
@@ -623,8 +631,8 @@ async function useSkill() {
   var skillName = sk;
   var skillType = detectSkillType(skillName);
 
-  // 确定施法者所在面板和敌方面板
-  var aIsP1 = (selectedAttacker.general.id === (findBattleGeneral(G.p1, selectedAttacker.row, selectedAttacker.col)||{}).id);
+  // 施法者始终是当前回合方，直接用current_team判断
+  var aIsP1 = (G.current_team === "p1");
   var allyGrid = aIsP1 ? "#bside1-grid" : "#bside2-grid";
   var enemyGrid = aIsP1 ? "#bside2-grid" : "#bside1-grid";
 
@@ -644,6 +652,12 @@ async function useSkill() {
   });
 
   await call("/battle/skill", {general_id: selectedAttacker.general.id});
+  if (!G || G.phase === "battle" && !G.event) {
+    setStatus("技能请求失败，请检查服务器连接");
+    await renderBattle();
+    return;
+  }
+  setStatus(G.event || (sk + " 已使用"));
 
   // 技能执行后，对受损目标显示特效
   setTimeout(function() {
