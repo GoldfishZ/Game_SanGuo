@@ -42,8 +42,7 @@
     tipEl.style.top = top + "px";
   }
 
-  function show(evt) {
-    var el = evt.currentTarget;
+  function show(evt, el) {
     var content = el.getAttribute("data-tooltip");
     if (!content) return;
 
@@ -77,7 +76,7 @@
   // Auto-bind to elements with data-tooltip
   document.addEventListener("mouseover", function(evt) {
     var el = evt.target.closest("[data-tooltip]");
-    if (el) show(evt);
+    if (el) show(evt, el);
     else hide();
   }, true);
 

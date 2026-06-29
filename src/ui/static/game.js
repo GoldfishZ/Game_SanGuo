@@ -540,8 +540,12 @@ var _battleClickLock = false;
 
     var isAlly = cell.getAttribute("data-isally") === "1";
     _battleClickLock = true;
-    var promise = isAlly ? onBattleAllyCell(r, c) : onBattleEnemyCell(r, c);
-    promise.then(function() { _battleClickLock = false; }).catch(function() { _battleClickLock = false; });
+    if (isAlly) {
+      Promise.resolve(onBattleAllyCell(r, c)).then(unlock).catch(unlock);
+    } else {
+      Promise.resolve(onBattleEnemyCell(r, c)).then(unlock).catch(unlock);
+    }
+    function unlock() { _battleClickLock = false; }
   });
 })();
 
@@ -1012,6 +1016,8 @@ function quitToMenu() {
     if (/攻|枪|轮|突|击|神速|猛|弓|箭/.test(n)) return "damage";
     return "buff";
   }
+  // 暴露给全局（useSkill 需要）
+  window.detectSkillType = detectSkillType;
 
   function loop() {
     ctx.clearRect(0, 0, W, H);
