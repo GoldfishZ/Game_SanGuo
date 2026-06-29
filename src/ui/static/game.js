@@ -651,13 +651,14 @@ async function useSkill() {
     }
   });
 
-  await call("/battle/skill", {general_id: selectedAttacker.general.id});
-  if (!G || G.phase === "battle" && !G.event) {
+  var result = await call("/battle/skill", {general_id: selectedAttacker.general.id});
+  if (!result) {
     setStatus("技能请求失败，请检查服务器连接");
+    selectedAttacker = null; battlePhase = "select";
     await renderBattle();
     return;
   }
-  setStatus(G.event || (sk + " 已使用"));
+  setStatus(result.event || (sk + " 已使用"));
 
   // 技能执行后，对受损目标显示特效
   setTimeout(function() {
