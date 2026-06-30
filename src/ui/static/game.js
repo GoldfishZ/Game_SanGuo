@@ -688,7 +688,7 @@ function chooseAttack() {
  *   4. 本回合未使用过技能
  *   5. API返回有效结果
  */
-function useSkill() {
+async function useSkill() {
   if (!selectedAttacker) { setStatus("未选择武将，无法使用技能"); return; }
   var sk = selectedAttacker.general.skill;
   if (!sk || sk === "无") { setStatus(selectedAttacker.general.name + " 没有主动技能"); return; }
