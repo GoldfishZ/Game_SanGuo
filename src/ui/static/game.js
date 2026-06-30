@@ -791,10 +791,11 @@ function askOddEven(msg) {
       '<div style="font-size:20px;color:var(--gold);margin-bottom:8px">🎲 猜奇偶</div>' +
       '<div style="font-size:14px;color:var(--muted);margin-bottom:20px">' + msg + '</div>' +
       '<div style="display:flex;gap:16px;justify-content:center">' +
-      '<div class="btn primary" style="font-size:18px;padding:12px 32px" onclick="this.closest(\'div\').parentElement._resolve(\'奇\')">奇</div>' +
-      '<div class="btn" style="font-size:18px;padding:12px 32px" onclick="this.closest(\'div\').parentElement._resolve(\'偶\')">偶</div>' +
+      '<div class="btn primary" style="font-size:18px;padding:12px 32px" onclick="this.parentElement.parentElement._resolve(\'奇\')">奇</div>' +
+      '<div class="btn" style="font-size:18px;padding:12px 32px" onclick="this.parentElement.parentElement._resolve(\'偶\')">偶</div>' +
       '</div></div>';
-    overlay._resolve = function(v) { overlay.remove(); resolve(v); };
+    var wrapper = overlay.firstElementChild;
+    wrapper._resolve = function(v) { overlay.remove(); resolve(v); };
     overlay.addEventListener("click", function(e) { if (e.target === overlay) { overlay.remove(); resolve(null); } });
     document.body.appendChild(overlay);
   });
