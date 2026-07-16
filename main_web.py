@@ -96,6 +96,24 @@ class GameState:
         self.phase = "select_p1"
         self.battle_system = None
         self.last_event = "游戏已初始化"
+        self.turn_count = 0
+        self.winner = ""
+        self.dice_p1 = 0
+        self.dice_p2 = 0
+        self.compensation = ""
+
+    def finish_battle(self):
+        """结束 Web 战斗，并把引擎队名统一转换为前端玩家名。"""
+        if not self.battle_system or not self.controller:
+            return
+        winner_team = self.battle_system._determine_winner()
+        self.phase = "over"
+        self.winner = winner_team
+        for player in (self.controller.player1, self.controller.player2):
+            if player.team.team_name == winner_team:
+                self.winner = player.name
+                break
+        self.last_event = f"战斗结束，{self.winner} 获胜"
 
     def to_json(self):
         c = self.controller
@@ -158,11 +176,14 @@ class GameState:
                 "attributes": [a.value for a in (g.attribute or [])],
                 "_ambushHidden": g.get_passive_skill("伏兵").is_hidden if g.has_passive_skill("伏兵") else False,
                 "_ambushTriggered": g.get_passive_skill("伏兵").triggered if g.has_passive_skill("伏兵") else False,
+                "_fenceBroken": not g.get_passive_skill("防栅").is_active if g.has_passive_skill("防栅") else False,
+                "_reviveUsed": g.get_passive_skill("复活").has_revived if g.has_passive_skill("复活") else False,
                 "_hasAttacked": g._has_attacked_this_turn,
                 "_hasUsedSkill": g._has_used_skill_this_turn,
                 "_hasSpeedJudgment": g.has_buff_type("attack_speed_judgment"),
                 "_hasSpeedRequired": g.has_debuff_type("attack_speed_required"),
-                "_targetType": g.active_skill.target_type.value if (g.active_skill and hasattr(g.active_skill, 'target_type')) else "",
+                "_targetType": g.active_skill.target_type.name if (g.active_skill and hasattr(g.active_skill, 'target_type')) else "",
+                "skill_cost": g.active_skill.morale_cost if g.active_skill else 0,
             })
         return {
             "name": p.name,
@@ -187,6 +208,9 @@ def handle_api(path, body, handler):
 
     # POST /api/select → {"general_ids": [1,2,...]}
     if path == "/api/select":
+        if c is None or STATE.phase not in ("select_p1", "select_p2"):
+            STATE.last_event = "当前阶段不能选将"
+            return STATE.to_json()
         ids = body.get("general_ids", [])
         selected_ids = set()
         for gid in ids:
@@ -196,11 +220,17 @@ def handle_api(path, body, handler):
                 continue
         pool = STATE.pool_p1 if STATE.phase == "select_p1" else STATE.pool_p2
         target_player = c.player1 if STATE.phase == "select_p1" else c.player2
-        for gid in selected_ids:
-            for g in pool:
-                if g.general_id == gid and hasattr(g, 'pool_index'):
-                    target_player.add_general_to_team(g)
-                    delattr(g, 'pool_index')
+        selected = [g for g in pool if g.general_id in selected_ids and hasattr(g, "pool_index")]
+        selected_cost = sum(g.cost for g in selected)
+        if not selected:
+            STATE.last_event = "请至少选择一名武将"
+            return STATE.to_json()
+        if selected_cost > STATE.cost_limit:
+            STATE.last_event = f"选将费用超过上限 {STATE.cost_limit}"
+            return STATE.to_json()
+        for g in selected:
+            target_player.add_general_to_team(g)
+            delattr(g, "pool_index")
         if STATE.phase == "select_p1":
             STATE.phase = "select_p2"
             STATE.last_event = "玩家1已选择，轮到玩家2"
@@ -211,14 +241,40 @@ def handle_api(path, body, handler):
 
     # POST /api/place → {"positions": {"row": 0, "col": 0, "general_id": 1}, ...}
     if path == "/api/place":
+        if c is None or STATE.phase not in ("formation_p1", "formation_p2"):
+            STATE.last_event = "当前阶段不能布阵"
+            return STATE.to_json()
         positions = body.get("positions", [])
         target_player = c.player1 if STATE.phase == "formation_p1" else c.player2
-        for p in positions:
-            g = next((gen for gen in target_player.selected_generals
-                      if gen.general_id == p["general_id"]), None)
-            if g:
-                target_player.team.position_general(g, p["row"], p["col"])
-        # 始终执行阶段切换
+        expected_ids = {g.general_id for g in target_player.selected_generals}
+        normalized = []
+        try:
+            for position in positions:
+                normalized.append((
+                    int(position["general_id"]),
+                    int(position["row"]),
+                    int(position["col"]),
+                ))
+        except (KeyError, TypeError, ValueError):
+            normalized = []
+        placed_ids = {general_id for general_id, _, _ in normalized}
+        cells = {(row, col) for _, row, col in normalized}
+        valid = (
+            len(normalized) == len(expected_ids)
+            and placed_ids == expected_ids
+            and len(cells) == len(normalized)
+            and all(0 <= row < 3 and 0 <= col < 4 for _, row, col in normalized)
+        )
+        if not valid:
+            STATE.last_event = "请把全部武将放入互不重叠的合法阵位"
+            return STATE.to_json()
+        for general_id, row, col in normalized:
+            general = next(g for g in target_player.selected_generals
+                           if g.general_id == general_id)
+            if not target_player.team.position_general(general, row, col):
+                STATE.last_event = "阵位冲突，布阵未完成"
+                return STATE.to_json()
+
         if STATE.phase == "formation_p1":
             STATE.phase = "formation_p2"
             STATE.last_event = "玩家1布阵完成，轮到玩家2布阵"
@@ -229,20 +285,17 @@ def handle_api(path, body, handler):
 
     # POST /api/dice → 掷骰子
     if path == "/api/dice":
-        d1 = random.randint(1, 6)
-        d2 = random.randint(1, 6)
-        if d1 > d2:
-            c.first_player, c.second_player = c.player1, c.player2
-        elif d2 > d1:
-            c.first_player, c.second_player = c.player2, c.player1
-        else:
-            # 平局则重掷
+        if c is None or STATE.phase != "dice":
+            STATE.last_event = "双方完成布阵后才能掷骰"
+            return STATE.to_json()
+        d1 = d2 = 0
+        while d1 == d2:
             d1 = random.randint(1, 6)
             d2 = random.randint(1, 6)
-            if d1 > d2:
-                c.first_player, c.second_player = c.player1, c.player2
-            else:
-                c.first_player, c.second_player = c.player2, c.player1
+        if d1 > d2:
+            c.first_player, c.second_player = c.player1, c.player2
+        else:
+            c.first_player, c.second_player = c.player2, c.player1
         c.current_player = c.first_player
         # 后手补偿
         c.second_player.team.max_morale += 2
@@ -265,20 +318,18 @@ def handle_api(path, body, handler):
         return STATE.to_json()
 
     # POST /api/battle/next or /api/battle/skip -> end current player's turn
-    if path in ("/api/battle/next", "/api/battle/skip") and STATE.battle_system:
+    if path in ("/api/battle/next", "/api/battle/skip") and STATE.battle_system and STATE.phase == "battle":
         bs = STATE.battle_system
         if bs._is_game_over():
-            STATE.phase = "over"
-            STATE.winner = bs._determine_winner()
-            wn = STATE.winner
-            for p in [c.player1, c.player2]:
-                if p.team.team_name == wn:
-                    STATE.winner = p.name
-            STATE.last_event = f"战斗结束，{STATE.winner} 获胜"
+            STATE.finish_battle()
             return STATE.to_json()
 
-        # 回合结束：清理当前方过期效果后切换
-        bs.current_side.update_effects()
+        # 与 BattleSystem.run 保持一致：拉锯战达到上限时按剩余生命判胜。
+        if bs.turn_count >= bs.max_turns:
+            STATE.finish_battle()
+            return STATE.to_json()
+
+        # 回合结束后切换；效果只在新行动方回合开始时结算一次。
         bs._end_turn_cleanup()
         bs._switch_to_next_player()
         bs.turn_count += 1
@@ -290,7 +341,7 @@ def handle_api(path, body, handler):
         return STATE.to_json()
 
     # POST /api/battle/skill -> {"general_id": 1}
-    if path == "/api/battle/skill" and STATE.battle_system:
+    if path == "/api/battle/skill" and STATE.battle_system and STATE.phase == "battle":
         bs = STATE.battle_system
         from src.skills.skill_base import TargetType
         caster = None
@@ -300,12 +351,8 @@ def handle_api(path, body, handler):
                 gid = int(gid)
             except (TypeError, ValueError):
                 gid = None
-            # 从双方队伍中查找施法者（不只是当前方）
-            for team in [bs.team1, bs.team2]:
-                caster = next((g for g in team.get_alive_generals()
-                              if g.general_id == gid), None)
-                if caster:
-                    break
+            caster = next((g for g in bs.current_side.get_alive_generals()
+                           if g.general_id == gid), None)
         else:
             idx = body.get("general_index", -1)
             alive = bs.current_side.get_alive_generals()
@@ -332,6 +379,9 @@ def handle_api(path, body, handler):
                 targets = [max(allies, key=lambda g: g.get_effective_force())] if allies else [caster]
             elif tt == TargetType.ALL_ALLIES:
                 targets = caster_team.get_alive_generals()
+            elif tt == TargetType.AREA_ALLY:
+                # 此类技能根据施法者阵型自行计算范围，不需要敌方占位目标。
+                targets = []
             elif tt in (TargetType.SINGLE_ENEMY, TargetType.FRONT_ROW_ENEMY, TargetType.BACK_ROW_ENEMY, TargetType.RANDOM_ENEMY):
                 enemy_team = bs.team2 if caster_team == bs.team1 else bs.team1
                 enemy = enemy_team.get_alive_generals()
@@ -353,8 +403,8 @@ def handle_api(path, body, handler):
                         area_r = area_c = None
                     if area_r is not None:
                         targets = [g for g in enemy_team.get_alive_generals()
-                                   if area_r <= g.get_position()[0] <= area_r + 1
-                                   and area_c <= g.get_position()[1] <= area_c + 1]
+                                   if area_r <= enemy_team.get_general_position(g)[0] <= area_r + 1
+                                   and area_c <= enemy_team.get_general_position(g)[1] <= area_c + 1]
                     else:
                         targets = enemy_team.get_alive_generals()[:2]
                 else:
@@ -374,14 +424,13 @@ def handle_api(path, body, handler):
                     if effects:
                         STATE.last_event += f"：{effects}"
             if bs._is_game_over():
-                STATE.phase = "over"
-                STATE.winner = bs._determine_winner()
+                STATE.finish_battle()
         else:
             STATE.last_event = "该武将无法使用技能（冷却中、已阵亡或士气不足）"
         return STATE.to_json()
 
     # POST /api/battle/attack -> {"attacker_id": 1, "target_id": 2} or legacy indexes
-    if path == "/api/battle/attack" and STATE.battle_system:
+    if path == "/api/battle/attack" and STATE.battle_system and STATE.phase == "battle":
         bs = STATE.battle_system
         attackers = bs.current_side.get_alive_generals()
         enemy_team = bs._get_enemy_team()
@@ -423,14 +472,14 @@ def handle_api(path, body, handler):
             target_pos_before = (c.player1.team.get_general_position(target) or
                                 c.player2.team.get_general_position(target))
             dmg = attacker.attack(target, guess)
-            # 检查是否发生了伏兵替位（目标位置变了）
+            # 保留位置快照，便于未来阵型类普攻效果给出准确提示。
             target_pos_after = (c.player1.team.get_general_position(target) or
                                c.player2.team.get_general_position(target))
             pos_changed = (target_pos_before != target_pos_after)
             if dmg == 0:
                 STATE.last_event = f"{attacker.name} 攻击 {target.name}，但被防栅/护盾挡下"
             elif pos_changed:
-                STATE.last_event = f"{attacker.name} 攻击触发伏兵替位！{target.name} 受 {dmg} 点伤害"
+                STATE.last_event = f"{attacker.name} 攻击触发阵位变化！{target.name} 受 {dmg} 点伤害"
             else:
                 STATE.last_event = f"{attacker.name} 普攻 {target.name} [-{dmg}]"
             if not target.is_alive:
@@ -439,8 +488,7 @@ def handle_api(path, body, handler):
             if not attacker.is_alive:
                 STATE.last_event += f" {attacker.name} 被魅力反噬阵亡！"
             if bs._is_game_over():
-                STATE.phase = "over"
-                STATE.winner = bs._determine_winner()
+                STATE.finish_battle()
         else:
             STATE.last_event = "请选择合法的普攻目标（只能攻击敌方前排）"
         return STATE.to_json()

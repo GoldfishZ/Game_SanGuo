@@ -136,7 +136,7 @@ function renderCards(pool) {
   var ATTR = {
     "勇猛": {c:"#c04840",l:"勇"}, "魅力": {c:"#b050b8",l:"魅"},
     "募兵": {c:"#48a048",l:"募"}, "防栅": {c:"#4868c0",l:"防"},
-    "连环": {c:"#b09830",l:"连"}, "复活": {c:"#d06840",l:"复"},
+    "连计": {c:"#b09830",l:"连"}, "复活": {c:"#d06840",l:"复"},
     "伏兵": {c:"#5068b8",l:"伏"}
   };
   var html = "";
@@ -204,6 +204,7 @@ function previewInfoHTML(g, inPool) {
 }
 
 function showGeneralPreview(evt, id) {
+  id = Number(id);
   var g = G && G.pool ? G.pool.find(function(x) { return x.id == id; }) : null;
   if (!g) return;
   var inPool = selectedGenerals.includes(id);
@@ -214,6 +215,7 @@ function showGeneralPreview(evt, id) {
 }
 
 function togglePool(id) {
+  id = Number(id);
   if (selectedGenerals.includes(id)) {
     selectedGenerals = selectedGenerals.filter(function(x) { return x !== id; });
   } else {
@@ -238,6 +240,7 @@ function togglePool(id) {
 }
 
 function removeFromPool(id) {
+  id = Number(id);
   selectedGenerals = selectedGenerals.filter(function(x) { return x !== id; });
   renderCards(G.pool);
   renderPoolBar();
@@ -490,7 +493,7 @@ function buildBcellHTML(g, r, c, gridRow, isAlly) {
   if (attrs.indexOf("防栅") >= 0) {
     cls.push((g._fenceBroken || g.hp < g.maxHp) ? "fence-broken" : "fence");
   }
-  if (attrs.indexOf("连环") >= 0) cls.push("chain");
+  if (attrs.indexOf("连计") >= 0) cls.push("chain");
   if (attrs.indexOf("勇猛") >= 0 && g.hp <= g.maxHp / 2) cls.push("bravery-active");
   if (attrs.indexOf("魅力") >= 0) cls.push("charisma");
   if (attrs.indexOf("募兵") >= 0 && g.hp < g.maxHp) cls.push("recruit");
@@ -565,7 +568,8 @@ function updateBattlePhaseUI() {
 
   var hasAttacked = selected && selected._hasAttacked;
   var hasUsedSkill = selected && selected._hasUsedSkill;
-  var canSkill = canAct && selected && selected.skill && selected.skill !== "无" && !selected.cooldown && !hasUsedSkill && morale >= 2;
+  var skillCost = selected ? (selected.skill_cost || 0) : 0;
+  var canSkill = canAct && selected && selected.skill && selected.skill !== "无" && !selected.cooldown && !hasUsedSkill && morale >= skillCost;
   var canAttack = canAct && !hasAttacked;
 
   attackBtn.style.display = canAct ? "" : "none";
@@ -581,8 +585,8 @@ function updateBattlePhaseUI() {
       skillBtn.setAttribute("data-tooltip", selected.skill + " — 本回合已使用过技能");
     } else if (selected.cooldown) {
       skillBtn.setAttribute("data-tooltip", selected.skill + " 冷却中（剩余 " + selected.cooldown + " 回合）");
-    } else if (morale < 2 && selected.skill) {
-      skillBtn.setAttribute("data-tooltip", "士气不足！需要消耗士气才能使用技能");
+    } else if (morale < skillCost && selected.skill) {
+      skillBtn.setAttribute("data-tooltip", "士气不足！需要 " + skillCost + " 点士气");
     } else if (canSkill && selected.skill) {
       skillBtn.setAttribute("data-tooltip", selected.skill + " — " + (selected.skill_desc || ""));
     }
@@ -624,7 +628,7 @@ function onBattleAllyCell(r, c) {
  * 点击敌方武将 —— 在瞄准模式下执行普攻
  * 搜索逻辑：先搜敌方，避免双方同位置时选错
  */
-function onBattleEnemyCell(r, c) {
+async function onBattleEnemyCell(r, c) {
   if (battlePhase !== "target" || !selectedAttacker) {
     setStatus("请先选择己方武将并点击「普攻」进入瞄准模式");
     return;
@@ -646,7 +650,7 @@ function onBattleEnemyCell(r, c) {
   // 攻速判定：弹窗选择奇偶
   var guess = null;
   if (selectedAttacker.general._hasSpeedJudgment || selectedAttacker.general._hasSpeedRequired) {
-    guess = askOddEven();
+    guess = await askOddEven();
     if (!guess) {
       battlePhase = "action";
       return renderBattle();

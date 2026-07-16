@@ -1,6 +1,8 @@
 import json
+from unittest.mock import patch
 
 import main_web
+from game_data.generals_config import get_general_by_name
 
 
 def post(path, body=None):
@@ -20,7 +22,7 @@ def test_web_draft_pools_are_distinct_sixteen_each():
     assert p1_ids.isdisjoint(p2_ids)
 
 
-def test_web_placement_does_not_advance_until_confirmed():
+def test_web_frontend_submits_complete_formation_and_advances():
     post("/api/new")
     p1_pick = [main_web.STATE.pool_p1[0].general_id]
     p2_pick = [main_web.STATE.pool_p2[0].general_id]
@@ -33,13 +35,24 @@ def test_web_placement_does_not_advance_until_confirmed():
         "/api/place",
         {"positions": [{"general_id": p1_pick[0], "row": 0, "col": 0}]},
     )
-    assert placed["phase"] == "formation_p1"
+    assert placed["phase"] == "formation_p2"
     assert placed["p1"]["generals"][0]["row"] == 0
     assert placed["p1"]["generals"][0]["col"] == 0
 
-    confirmed = post("/api/place", {"positions": []})
-    assert confirmed["phase"] == "formation_p2"
 
+def test_web_rejects_incomplete_formation_without_advancing():
+    post("/api/new")
+    p1_picks = [g.general_id for g in main_web.STATE.pool_p1[:2]]
+    p2_pick = main_web.STATE.pool_p2[0].general_id
+    post("/api/select", {"general_ids": p1_picks})
+    post("/api/select", {"general_ids": [p2_pick]})
+
+    state = post("/api/place", {
+        "positions": [{"general_id": p1_picks[0], "row": 0, "col": 0}],
+    })
+
+    assert state["phase"] == "formation_p1"
+    assert "全部武将" in state["event"]
 
 def test_web_selection_accepts_string_ids_from_frontend():
     post("/api/new")
@@ -58,9 +71,7 @@ def start_two_single_general_battle():
     post("/api/select", {"general_ids": [str(p1_pick)]})
     post("/api/select", {"general_ids": [str(p2_pick)]})
     post("/api/place", {"positions": [{"general_id": p1_pick, "row": 0, "col": 0}]})
-    post("/api/place", {"positions": []})
     post("/api/place", {"positions": [{"general_id": p2_pick, "row": 0, "col": 0}]})
-    post("/api/place", {"positions": []})
     battle = post("/api/dice")
     return battle
 
@@ -96,3 +107,87 @@ def test_web_battle_skill_does_not_advance_turn():
     after_skill = post("/api/battle/skill", {"general_id": current["id"]})
     assert after_skill["current_player"] == current_player
     assert after_skill["turn"] == turn
+
+
+def test_web_rejects_out_of_turn_skill_use():
+    battle = start_two_single_general_battle()
+    current_key = battle["current_team"]
+    other_key = "p2" if current_key == "p1" else "p1"
+    other = battle[other_key]["generals"][0]
+    morale_before = battle[other_key]["morale"]
+
+    state = post("/api/battle/skill", {"general_id": other["id"]})
+
+    assert state[other_key]["morale"] == morale_before
+    assert state[other_key]["generals"][0]["_hasUsedSkill"] is False
+
+
+def test_web_effects_update_once_per_own_turn():
+    battle = start_two_single_general_battle()
+    bs = main_web.STATE.battle_system
+    original_side = bs.current_side
+    original_general = original_side.get_alive_generals()[0]
+    original_general.active_skill_cooldown = 3
+
+    post("/api/battle/skip")
+    assert original_general.active_skill_cooldown == 3
+
+    post("/api/battle/skip")
+    assert bs.current_side is original_side
+    assert original_general.active_skill_cooldown == 2
+
+
+def test_web_battle_finishes_at_engine_turn_limit():
+    start_two_single_general_battle()
+    main_web.STATE.battle_system.turn_count = main_web.STATE.battle_system.max_turns
+
+    state = post("/api/battle/skip")
+
+    assert state["phase"] == "over"
+    assert state["winner"] in {"玩家1", "玩家2"}
+    assert "战斗结束" in state["event"]
+
+
+def test_web_serializes_frontend_skill_and_passive_state():
+    post("/api/new")
+    player = main_web.STATE.controller.player1
+    thunder = get_general_by_name("夏侯月姬")
+    player.add_general_to_team(thunder)
+    data = main_web.STATE._team_json(player)["generals"][0]
+
+    assert data["_targetType"] == "AREA_ENEMY"
+    assert data["skill_cost"] == thunder.active_skill.morale_cost
+    assert data["_fenceBroken"] is False
+    assert data["_reviveUsed"] is False
+
+
+def test_web_reset_clears_previous_battle_metadata():
+    main_web.STATE.turn_count = 99
+    main_web.STATE.winner = "旧胜者"
+    main_web.STATE.dice_p1 = 6
+    main_web.STATE.dice_p2 = 1
+    main_web.STATE.compensation = "旧补偿"
+
+    state = post("/api/new")
+
+    assert state["turn"] == 0
+    assert state["winner"] == ""
+    assert "d1" not in state
+    assert "compensation" not in state
+
+
+def test_web_dice_keeps_rerolling_until_not_tied():
+    post("/api/new")
+    p1_pick = main_web.STATE.pool_p1[0].general_id
+    p2_pick = main_web.STATE.pool_p2[0].general_id
+    post("/api/select", {"general_ids": [p1_pick]})
+    post("/api/select", {"general_ids": [p2_pick]})
+    post("/api/place", {"positions": [{"general_id": p1_pick, "row": 0, "col": 0}]})
+    post("/api/place", {"positions": [{"general_id": p2_pick, "row": 0, "col": 0}]})
+
+    with patch("main_web.random.randint", side_effect=[3, 3, 2, 2, 1, 6]):
+        state = post("/api/dice")
+
+    assert state["d1"] == 1
+    assert state["d2"] == 6
+    assert state["first"] == "玩家2"

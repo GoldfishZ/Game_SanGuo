@@ -213,13 +213,13 @@ class AmbushPassive(PassiveSkill):
         self.is_hidden = True  # 隐藏状态（不可被普攻选中）
         self.triggered = False  # 是否已触发反击（每局一次）
 
-    def check_auto_reveal(self, team_generals):
+    def check_auto_reveal(self, caster, team_generals):
         """检查是否需要自动破隐（队友全灭则失效）"""
-        if not self.triggered and not self.is_hidden:
+        if not self.is_hidden:
             return
         # 检查是否还有其他存活的友军
         alive_allies = [g for g in team_generals
-                       if g.is_alive and g.has_passive_skill("伏兵") is not self]
+                        if g is not caster and g.is_alive]
         if not alive_allies:
             self.is_hidden = False  # 队友死光，自动失去效果
 
@@ -230,6 +230,7 @@ class AmbushPassive(PassiveSkill):
 
     def can_be_targeted(self, caster, team_generals) -> bool:
         """检查是否可以被选中（隐藏时不可直接选中）"""
+        self.check_auto_reveal(caster, team_generals)
         return not self.is_hidden
 
     def can_counter(self):

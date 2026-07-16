@@ -1462,7 +1462,6 @@ class FenceRebuildSkill(Skill):
             fence = general.get_passive_skill("防栅")
             was_active = fence.is_active
             fence.is_active = True
-            fence.rebuild_turns_remaining = 0
             details.append({
                 "target": general.name,
                 "effect": "防栅重建" if not was_active else "防栅保持",

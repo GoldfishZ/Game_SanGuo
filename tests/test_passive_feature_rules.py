@@ -41,19 +41,18 @@ def test_recruit_heals_each_turn_only_when_damaged():
     assert general.current_hp == general.max_hp - 2
 
 
-def test_fence_blocks_basic_attack_then_rebuilds_after_two_turns():
+def test_fence_blocks_one_basic_attack_until_rebuilt_by_skill():
     defender = make_general("防栅", 4, 8, [Attribute.FENCE])
     attacker = make_general("攻击者", 6, 2)
 
     assert attacker.attack(defender) == 0
     fence = defender.get_passive_skill("防栅")
     assert fence.is_active is False
-    assert fence.rebuild_turns_remaining == 2
 
     defender.update_effects()
     assert fence.is_active is False
     defender.update_effects()
-    assert fence.is_active is True
+    assert fence.is_active is False
 
 
 def test_fence_does_not_block_skill_damage():
@@ -90,6 +89,22 @@ def test_chain_shares_effects_and_damage():
     assert second.current_hp == before_second - 3
 
 
+def test_chain_effect_sync_does_not_duplicate_each_turn():
+    first = make_general("连计1", 5, 8, [Attribute.CHAIN])
+    second = make_general("连计2", 5, 8, [Attribute.CHAIN])
+    team = Team("连计队")
+    team.add_general(first)
+    team.add_general(second)
+    first.add_buff("force_boost", 2, 200)
+
+    for _ in range(100):
+        first.sync_chain_effects()
+        second.sync_chain_effects()
+
+    assert len(first.buffs) == 1
+    assert len(second.buffs) == 1
+
+
 def test_revive_once_at_half_hp():
     general = make_general("复活", 3, 3, [Attribute.REVIVE])
 
@@ -102,7 +117,7 @@ def test_revive_once_at_half_hp():
     assert general.current_hp == 0
 
 
-def test_ambush_is_not_basic_attack_target_and_can_intercept():
+def test_ambush_is_not_basic_attack_target_and_can_counter():
     target = make_general("友军", 4, 4)
     ambush = make_general("伏兵", 4, 6, [Attribute.AMBUSH])
     attacker = make_general("攻击者", 8, 4)
@@ -114,20 +129,23 @@ def test_ambush_is_not_basic_attack_target_and_can_intercept():
 
     assert ambush not in team.get_attackable_targets()
 
+    expected_damage = attacker.calculate_damage_to(target)
+    attacker_hp_before = attacker.current_hp
     damage = attacker.attack(target)
-    assert damage == 2
-    assert target.current_hp == target.max_hp
-    assert ambush.current_hp == ambush.max_hp - 2
+    assert damage == expected_damage
+    assert target.current_hp == target.max_hp - expected_damage
+    assert ambush.current_hp == ambush.max_hp
+    assert attacker.current_hp == attacker_hp_before - max(1, expected_damage // 2)
     assert ambush.get_passive_skill("伏兵").is_hidden is False
-    assert team.get_general_position(ambush) == (0, 0)
-    assert team.get_general_position(target) == (1, 0)
+    assert team.get_general_position(target) == (0, 0)
+    assert team.get_general_position(ambush) == (1, 0)
 
 
 if __name__ == "__main__":
     test_recruit_heals_each_turn_only_when_damaged()
-    test_fence_blocks_basic_attack_then_rebuilds_after_two_turns()
+    test_fence_blocks_one_basic_attack_until_rebuilt_by_skill()
     test_fence_does_not_block_skill_damage()
     test_chain_shares_effects_and_damage()
     test_revive_once_at_half_hp()
-    test_ambush_is_not_basic_attack_target_and_can_intercept()
+    test_ambush_is_not_basic_attack_target_and_can_counter()
     print("被动特性规则测试通过")

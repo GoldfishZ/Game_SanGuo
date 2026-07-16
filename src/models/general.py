@@ -285,19 +285,14 @@ class General:
         target_force = target.get_effective_force()
         target_intelligence = target.get_effective_intelligence()
         
-        # 按照战斗逻辑计算伤害
+        # 按照游戏规则计算伤害：武力占优时取武力差，否则综合差最多 3 点。
         if attacker_force > target_force:
-            # 武力大于目标武力：伤害 = 攻击方武力 - 目标武力
             damage = attacker_force - target_force
         else:
-            # 武力小于等于目标武力：伤害 = (攻击方武力+智力) - (目标武力+智力)
             damage = (attacker_force + attacker_intelligence) - (target_force + target_intelligence)
-            # 武力低于对方的情况下，确保伤害不超过5
-            if damage >= 5:
-              damage = 5
+            damage = min(3, damage)
 
-        # 确保最低伤害为2
-        return max(2, damage)
+        return max(1, damage)
     
     def attack(self, target: 'General', guess: str = None) -> int:
         """
@@ -573,11 +568,22 @@ class General:
         if len(chain_generals) <= 1:
             return
 
-        all_buffs = []
-        all_debuffs = []
-        for g in chain_generals:
-            all_buffs.extend(g.buffs)
-            all_debuffs.extend(g.debuffs)
+        # 取每种相同效果在单个武将上的最大叠加数，而不是把每个已同步副本
+        # 再次相加。否则每次 update_effects 都会令列表指数增长。
+        def merge_effects(attribute):
+            merged = []
+            for general in chain_generals:
+                seen_on_general = []
+                for effect in getattr(general, attribute):
+                    occurrence = sum(1 for item in seen_on_general if item == effect) + 1
+                    seen_on_general.append(effect)
+                    existing = sum(1 for item in merged if item == effect)
+                    if existing < occurrence:
+                        merged.append(effect.copy())
+            return merged
+
+        all_buffs = merge_effects("buffs")
+        all_debuffs = merge_effects("debuffs")
         for g in chain_generals:
             g.buffs = [b.copy() for b in all_buffs]
             g.debuffs = [d.copy() for d in all_debuffs]

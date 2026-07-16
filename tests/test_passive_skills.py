@@ -145,7 +145,8 @@ def test_fence_passive():
     print(f"   鲁肃生命: {lu_su.current_hp}/{lu_su.max_hp}")
     print(f"   防栅状态: {lu_su.get_passive_skill('防栅').is_active}")
     
-    # 第二次攻击（防栅已失效）
+    # 下一回合再次攻击（防栅已失效）
+    attacker.update_effects()
     damage2 = attacker.attack(lu_su)
     print(f"   第二次攻击伤害: {damage2}")
     print(f"   鲁肃生命: {lu_su.current_hp}/{lu_su.max_hp}")
@@ -155,12 +156,11 @@ def test_fence_passive():
     else:
         print("   ❌ 防栅被动技能未生效")
 
-    # 两个己方回合后，若武将未死，防栅重建
+    # 普通回合推进不会自动重建；只能由朱然的“防栅重建”恢复。
     lu_su.update_effects()
-    print(f"   防栅重建倒计时: {lu_su.get_passive_skill('防栅').rebuild_turns_remaining}")
     lu_su.update_effects()
-    print(f"   防栅重建后状态: {lu_su.get_passive_skill('防栅').is_active}")
-    assert lu_su.get_passive_skill("防栅").is_active
+    print(f"   两回合后防栅状态: {lu_su.get_passive_skill('防栅').is_active}")
+    assert not lu_su.get_passive_skill("防栅").is_active
 
 
 def test_revive_passive():
@@ -231,21 +231,24 @@ def test_ambush_passive():
     print(f"   伏兵隐藏状态: {ambush_general.get_passive_skill('伏兵').is_hidden}")
     print(f"   伏兵可被选中: {ambush_general.can_be_targeted_by_enemy(team_generals)}")
     
-    # 即使只剩伏兵，也不会因普攻目标选择自动破隐
+    # 只剩伏兵时自动破隐，避免战斗永久没有合法目标。
     normal_general.is_alive = False
     print(f"   普通武将阵亡后...")
     print(f"   伏兵隐藏状态: {ambush_general.get_passive_skill('伏兵').is_hidden}")
     print(f"   伏兵可被选中: {ambush_general.can_be_targeted_by_enemy(team_generals)}")
     
-    if not ambush_general.can_be_targeted_by_enemy(team_generals):
-        print("   ✅ 伏兵隐藏时不可被普攻选中！")
+    if ambush_general.can_be_targeted_by_enemy(team_generals):
+        print("   ✅ 伏兵在队友全灭后自动破隐！")
     else:
-        print("   ❌ 伏兵隐藏状态异常")
+        print("   ❌ 伏兵自动破隐异常")
 
     # 隐藏伏兵：邻格友军被攻时，对攻击者造成一半伤害的反击
     team = Team("伏兵测试队")
     ambush_general.is_alive = True
     normal_general.is_alive = True
+    ambush_passive = ambush_general.get_passive_skill("伏兵")
+    ambush_passive.is_hidden = True
+    ambush_passive.triggered = False
     team.add_general(normal_general)
     team.add_general(ambush_general)
     team.position_general(normal_general, 0, 0)  # 前排
@@ -292,7 +295,7 @@ def main():
     print("   💚 募兵: 有伤时每回合回复1点生命")
     print("   🛡️ 防栅: 抵挡一次普攻，攻破后两回合重建")
     print("   ⚡ 复活: 死亡后以50%生命复活一次")
-    print("   👤 伏兵: 隐藏时不可被普攻选中，可替友军承受一半普攻伤害后破隐")
+    print("   👤 伏兵: 隐藏时不可被普攻选中，邻格友军受击时反击一半伤害后破隐")
     print("   💔 魅力: 受到致命伤害时，猜奇偶成功则反弹所受伤害的一半")
     print("   🔗 连计: 伤害分担+效果同步已集成")
 

@@ -32,7 +32,6 @@ def make_general(name, attributes=None):
 def break_fence(general):
     fence = general.get_passive_skill("防栅")
     fence.is_active = False
-    fence.rebuild_turns_remaining = 2
     return fence
 
 
@@ -74,14 +73,10 @@ def test_fence_rebuild_restores_all_alive_ally_fences_only():
     assert result["targets_affected"] == 2
     assert team.current_morale == 6
     assert zhu_ran_fence.is_active is True
-    assert zhu_ran_fence.rebuild_turns_remaining == 0
     assert ally_fence_state.is_active is True
-    assert ally_fence_state.rebuild_turns_remaining == 0
     assert not ally_no_fence.has_passive_skill("防栅")
     assert dead_fence_state.is_active is False
-    assert dead_fence_state.rebuild_turns_remaining == 2
     assert enemy_fence_state.is_active is False
-    assert enemy_fence_state.rebuild_turns_remaining == 2
 
 
 if __name__ == "__main__":
