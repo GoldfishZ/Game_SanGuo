@@ -12,6 +12,7 @@ from typing import Optional, Tuple, List
 from src.battle.battle_system import BattleCallbacks, BattleEvent, BattleStatusData
 from src.models.team import Team
 from src.models.general import General
+from src.paths import BACKGROUNDS_DIR
 
 
 # ==================== 常量 ====================
@@ -67,7 +68,7 @@ def _load_bg(name: str, w: int, h: int):
     if key in _BG_CACHE:
         return _BG_CACHE[key]
     import os as _os
-    d = _os.path.join(_os.path.dirname(_os.path.dirname(_os.path.dirname(_os.path.abspath(__file__)))), "assets", "images", "backgrounds")
+    d = str(BACKGROUNDS_DIR)
     p = _os.path.join(d, name)
     surf = None
     if _os.path.exists(p):
@@ -263,7 +264,7 @@ def _draw_wrapped_text(surface, text: str, font, color, rect: pygame.Rect, line_
 
 
 def _draw_skill_detail_panel(surface, general: General, rect: pygame.Rect, border_color):
-    from game_data.skill_details import get_skill_detail
+    from src.game_data.skill_details import get_skill_detail
 
     pygame.draw.rect(surface, Colors.PANEL_BG, rect, border_radius=14)
     pygame.draw.rect(surface, border_color, rect, 3, border_radius=14)
@@ -823,7 +824,7 @@ class PygameUI:
         return None
 
     def show_general_gallery(self) -> None:
-        from game_data.generals_data import GENERALS_DATA
+        from src.game_data.generals_data import GENERALS_DATA
         all_g = list(GENERALS_DATA)
         filters = {"camp": None, "attr": None}
         camp_opts = ["全部", "蜀", "魏", "吴", "他"]
@@ -887,7 +888,7 @@ class PygameUI:
                 ix = cx+(cw2-img.get_width())//2; iy = cy+(430-img.get_height())//2
                 self.screen.blit(img, (ix, iy))
             # 生平（从 generals_bios.py 读取）
-            from game_data.generals_bios import GENERALS_BIOGRAPHY
+            from src.game_data.generals_bios import GENERALS_BIOGRAPHY
             bio_data = GENERALS_BIOGRAPHY.get(g["name"], {})
             bio_text = bio_data.get("text", "")
             years = bio_data.get("years", "")

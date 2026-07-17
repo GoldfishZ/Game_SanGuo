@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from game_data.passive_skills_config import get_passive_skills_for_attributes
+from src.game_data.passive_skills_config import get_passive_skills_for_attributes
 from src.models.general import Attribute, Camp, General, Rarity
 
 
@@ -32,8 +32,8 @@ def test_bravery_success_below_half_hp():
     target = make_general("目标", 3, 1)
     attacker.take_damage(7)
 
-    with patch("game_data.passive_skills_config.random.choice", return_value="odd"), \
-         patch("game_data.passive_skills_config.random.randint", return_value=3):
+    with patch("src.game_data.passive_skills_config.random.choice", return_value="odd"), \
+         patch("src.game_data.passive_skills_config.random.randint", return_value=3):
         damage = attacker.attack(target)
 
     assert damage == 5
@@ -46,8 +46,8 @@ def test_bravery_does_not_trigger_at_exactly_half_hp():
     target = make_general("目标", 3, 1)
     attacker.take_damage(6)
 
-    with patch("game_data.passive_skills_config.random.choice", return_value="odd"), \
-         patch("game_data.passive_skills_config.random.randint", return_value=3):
+    with patch("src.game_data.passive_skills_config.random.choice", return_value="odd"), \
+         patch("src.game_data.passive_skills_config.random.randint", return_value=3):
         damage = attacker.attack(target)
 
     assert damage == 3
@@ -59,8 +59,8 @@ def test_charisma_reflects_rounded_half_of_fatal_damage():
     attacker = make_general("攻击者", 5, 5)
     victim.take_damage(1)
 
-    with patch("game_data.passive_skills_config.random.choice", return_value="even"), \
-         patch("game_data.passive_skills_config.random.randint", return_value=2):
+    with patch("src.game_data.passive_skills_config.random.choice", return_value="even"), \
+         patch("src.game_data.passive_skills_config.random.randint", return_value=2):
         actual_damage = victim.take_damage(5, attacker)
 
     assert actual_damage == 5
@@ -74,8 +74,8 @@ def test_charisma_does_not_reflect_when_judgment_fails():
     attacker = make_general("攻击者", 5, 5)
     victim.take_damage(1)
 
-    with patch("game_data.passive_skills_config.random.choice", return_value="odd"), \
-         patch("game_data.passive_skills_config.random.randint", return_value=2):
+    with patch("src.game_data.passive_skills_config.random.choice", return_value="odd"), \
+         patch("src.game_data.passive_skills_config.random.randint", return_value=2):
         actual_damage = victim.take_damage(5, attacker)
 
     assert actual_damage == 5

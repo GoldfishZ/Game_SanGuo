@@ -11,11 +11,13 @@ import random
 import sys
 import time
 import tracemalloc
+from pathlib import Path
 
-sys.path.insert(0, ".")
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
 
-import main_web
-from game_data.generals_data import GENERALS_DATA
+from src.web import server as main_web
+from src.game_data.generals_data import GENERALS_DATA
 
 
 def api(path, body=None):

@@ -8,8 +8,8 @@ from unittest.mock import patch
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.models.general import General, Camp, Rarity, Attribute
-from game_data.skills_config import get_skill_by_id
-from game_data.passive_skills_config import get_passive_skills_for_attributes, round_half_up
+from src.game_data.skills_config import get_skill_by_id
+from src.game_data.passive_skills_config import get_passive_skills_for_attributes, round_half_up
 
 
 def test_charisma_passive():
@@ -55,8 +55,8 @@ def test_charisma_passive():
     print(f"   计算致死伤害: {damage}")
     
     # 攻击者击杀魅力武将
-    with patch("game_data.passive_skills_config.random.choice", return_value="even"), \
-         patch("game_data.passive_skills_config.random.randint", return_value=2):
+    with patch("src.game_data.passive_skills_config.random.choice", return_value="even"), \
+         patch("src.game_data.passive_skills_config.random.randint", return_value=2):
         actual_damage = attacker.attack(charisma_general)
     
     print(f"   实际伤害: {actual_damage}")
@@ -126,8 +126,8 @@ def test_combined_passives():
     # 低血量反击（测试勇猛）
     print("\n   低血量反击（测试勇猛）:")
     print(f"   生命条件: {multi_general.current_hp} < {multi_general.max_hp / 2} ? {multi_general.current_hp < multi_general.max_hp / 2}")
-    with patch("game_data.passive_skills_config.random.choice", return_value="odd"), \
-         patch("game_data.passive_skills_config.random.randint", return_value=3):
+    with patch("src.game_data.passive_skills_config.random.choice", return_value="odd"), \
+         patch("src.game_data.passive_skills_config.random.randint", return_value=3):
         counter_damage = multi_general.attack(enemy)
     print(f"   反击伤害: {counter_damage}, 敌人生命: {enemy.current_hp}/{enemy.max_hp}")
 

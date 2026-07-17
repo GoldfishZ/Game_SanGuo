@@ -6,6 +6,7 @@
 import os
 import pygame
 from typing import Optional, Dict
+from src.paths import ASSETS_DIR
 
 
 class ImageLoader:
@@ -13,11 +14,7 @@ class ImageLoader:
 
     def __init__(self, assets_root: str = None):
         if assets_root is None:
-            # 默认：项目根目录下的 assets/
-            assets_root = os.path.join(
-                os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
-                "assets"
-            )
+            assets_root = str(ASSETS_DIR)
         self.assets_root = assets_root
         self._cache: Dict[str, pygame.Surface] = {}
         self._placeholder: Optional[pygame.Surface] = None

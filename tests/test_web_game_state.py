@@ -2,7 +2,7 @@ import json
 from unittest.mock import patch
 
 import main_web
-from game_data.generals_config import get_general_by_name
+from src.game_data.generals_config import get_general_by_name
 
 
 def post(path, body=None):

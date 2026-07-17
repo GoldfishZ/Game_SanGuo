@@ -17,9 +17,11 @@ pygame_ui.py 的响应式布局补丁
 import sys
 import os
 
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 def apply_responsive_layout_patch():
     """应用响应式布局补丁到 pygame_ui.py"""
-    file_path = os.path.join(os.path.dirname(__file__), 'src', 'ui', 'pygame_ui.py')
+    file_path = os.path.join(PROJECT_ROOT, 'src', 'ui', 'pygame_ui.py')
     
     with open(file_path, 'r', encoding='utf-8') as f:
         content = f.read()

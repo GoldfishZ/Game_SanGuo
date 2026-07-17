@@ -7,8 +7,8 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from game_data.passive_skills_config import get_passive_skills_for_attributes
-from game_data.skills_config import get_skill_by_id
+from src.game_data.passive_skills_config import get_passive_skills_for_attributes
+from src.game_data.skills_config import get_skill_by_id
 from src.battle.battle_system import BattleContext
 from src.models.general import Attribute, Camp, General, Rarity
 from src.models.team import Team

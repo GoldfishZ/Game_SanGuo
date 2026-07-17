@@ -22,7 +22,7 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 EDGE_CANDIDATES = (
     Path(r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"),
     Path(r"C:\Program Files\Microsoft\Edge\Application\msedge.exe"),

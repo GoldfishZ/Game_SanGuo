@@ -7,11 +7,11 @@ import sys
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from game_data.generals_config import get_general_by_name
+from src.game_data.generals_config import get_general_by_name
 from src.battle.battle_system import BattleContext
 from src.models.general import Camp, General, Rarity, Attribute
 from src.models.team import Team
-from game_data.passive_skills_config import get_passive_skills_for_attributes
+from src.game_data.passive_skills_config import get_passive_skills_for_attributes
 
 
 def make_general(name, force, intelligence, attributes=None):

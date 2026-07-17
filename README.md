@@ -1,87 +1,93 @@
-# 三国武将卡牌游戏 v1.0
+# 三国武将卡牌游戏
 
-基于 Python 的三国主题武将卡牌对战游戏，卡牌原型来自霸·三国志大战。
-两名玩家轮流操作，在同一个浏览器上对战。
+基于 Python 的三国主题武将卡牌对战游戏。两名玩家在同一个浏览器中轮流选将、布阵和战斗。
 
-## 🚀 快速开始（给别人玩）
+## 快速开始
 
-你的朋友只需要 3 步：
+Web 版无需安装第三方运行依赖：
 
-```bash
-# 1. 安装 Python 3（如果还没有）
-#    官网下载: https://www.python.org/downloads/
-
-# 2. 解压游戏文件夹，双击运行
+```powershell
 python main_web.py
-
-# 3. 浏览器打开 http://localhost:8088
 ```
 
-**零外部依赖**——不需要 `pip install` 任何东西，Python 自带的标准库就够了。
+浏览器访问 `http://localhost:8089`。
 
-## 🎮 怎么玩
+CLI/Pygame 入口仍可通过以下命令启动：
 
-1. 两位玩家轮流选将（费用上限 8 费）
-2. 排兵布阵：前排（第 0 行）挡攻击，后排安全
-3. 掷骰子决定先手
-4. 每回合：**技能阶段** → **普攻阶段** → 换人
-5. 一方全部武将阵亡 → 游戏结束
-
-## 📦 给别人玩的方式
-
-### 方式 1：直接发文件夹（推荐）
-
-把整个项目文件夹打包成 zip，发给对方。对方解压后运行 `python main_web.py`，浏览器打开 `http://localhost:8088`。
-
-### 方式 2：局域网对战
-
-如果两台电脑在同一网络下：
-```bash
-# 主机运行
-python main_web.py
-# 客机浏览器打开 http://主机的IP地址:8088
-# 主机IP获取方式：命令行输入 ipconfig，找 IPv4 地址
+```powershell
+python main.py
 ```
 
-### 方式 3：GitHub 发布
+## 分享给朋友
 
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
+推荐发送 `dist/Game_SanGuo_Windows.zip`。朋友解压后双击
+`Game_SanGuo.exe` 即可，无需安装 Python。构建方法见
+[`docs/packaging-windows.md`](docs/packaging-windows.md)。
 
-然后在 GitHub 仓库页面的 Releases 里创建发布，上传 zip 文件。
+也可以发送源码 ZIP，对方解压并运行 `python main_web.py`。
 
-## 🏗️ 技术栈
+## 基本玩法
 
-- **后端**：Python 3 标准库（`http.server`），零外部依赖
-- **前端**：纯 HTML/CSS/JS，零框架零构建工具
-- **图片**：WebP 格式，241MB→8.1MB 优化
-- **特效**：Canvas 粒子系统 + GSAP 动画
+1. 两位玩家轮流选将，队伍费用不能超过上限。
+2. 在 4 条战线、前中后 3 层阵位中排兵布阵。
+3. 掷骰决定先手，双方交替使用技能和普通攻击。
+4. 一方全部武将阵亡后战斗结束。
 
-## 📁 项目结构
+## 技术栈
 
-```
-├── main_web.py              Web 服务器入口
-├── game_data/               40 武将 + 42 技能数据
+- 后端：Python 标准库 `http.server`
+- 前端：原生 HTML、CSS、JavaScript
+- 战斗表现：Canvas 粒子与 CSS 动画
+- 图片：开发原图与 WebP 运行资源
+
+## 项目结构
+
+```text
+Game_SanGuo/
+├── main.py                  CLI/Pygame 兼容入口
+├── main_web.py              Web 服务器兼容入口
+├── desktop_launcher.py      Windows 发行版兼容入口
 ├── src/
-│   ├── models/              游戏逻辑（General/Team/Battle）
-│   ├── skills/              技能系统
-│   ├── battle/              战斗引擎
-│   └── ui/static/           前端文件（HTML/CSS/JS）
-├── assets/images/           武将卡图 + 背景（WebP）
-├── docs/                    开发文档
-├── tools/                   工具脚本
-└── tests/                   测试
+│   ├── app/                 CLI 应用实现
+│   ├── battle/              战斗流程
+│   ├── game_data/           武将、技能与生平数据
+│   ├── models/              General、Team、GameFlow 等模型
+│   ├── skills/              技能基类
+│   ├── ui/                  CLI/Pygame 界面
+│   ├── web/                 Web 服务、桌面启动器与静态前端
+│   └── paths.py             统一项目资源路径
+├── assets/images/           武将卡和背景资源
+├── docs/                    架构、流程与打包文档
+├── requirements/            分组构建依赖
+├── tests/                   自动化测试
+└── tools/
+    ├── assets/              图片处理工具
+    ├── build/               Windows 打包脚本
+    ├── maintenance/         历史维护脚本
+    └── testing/             单测、模拟与浏览器压力测试
 ```
 
-## ⚙️ 配置
+## 常用开发命令
 
-环境变量 `PORT` 可修改端口号：
-```bash
-# Windows
-set PORT=9090 && python main_web.py
+```powershell
+# 全部 Python 测试
+$env:PYTHONIOENCODING='utf-8'; python tools/testing/run_tests.py
 
-# Mac/Linux
-PORT=9090 python main_web.py
+# HTML 模板检查
+python tools/testing/validate_html_templates.py
+
+# 真实浏览器前端回归
+python tools/testing/run_frontend_browser_stress.py --games 100
+
+# Windows 单文件发行包
+powershell -ExecutionPolicy Bypass -File .\tools\build\build_windows_exe.ps1
 ```
+
+## 修改 Web 端口
+
+```powershell
+$env:PORT=9090
+python main_web.py
+```
+
+Web 服务器默认监听所有本机网络接口；桌面发行版只监听 `127.0.0.1`。

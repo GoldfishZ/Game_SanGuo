@@ -15,7 +15,8 @@ Description: Work done by GoldfishZ!
 import re
 import os
 
-file_path = os.path.join(os.path.dirname(__file__), 'src', 'ui', 'pygame_ui.py')
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+file_path = os.path.join(PROJECT_ROOT, 'src', 'ui', 'pygame_ui.py')
 
 # 读取文件
 print(f"读取文件: {file_path}")

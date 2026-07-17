@@ -10,7 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.models.game_flow import GameFlowController, Player
 from src.models.general import General, Camp, Rarity, Attribute
 from src.battle.battle_system import BattleSystem, BattleContext, BattleCallbacks, BattleEvent, BattleStatusData
-from game_data.generals_config import get_all_generals
+from src.game_data.generals_config import get_all_generals
 
 
 # ==================== Mock Callbacks（用于自动测试） ====================

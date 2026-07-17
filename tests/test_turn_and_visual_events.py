@@ -3,7 +3,7 @@
 import json
 
 import main_web
-from game_data.generals_config import get_general_by_name
+from src.game_data.generals_config import get_general_by_name
 from src.battle.battle_system import BattleSystem
 from src.models.team import Team
 

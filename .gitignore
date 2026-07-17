@@ -1,9 +1,12 @@
 DEVELOPMENT_GUIDE.md
 __pycache__/
+*.py[cod]
+.pytest_cache/
 AGENTS.md
 CLAUDE.md
-docs/
-1.md
 *.pdf
-design-demos/
-artifacts/
+/design-demos/
+/artifacts/
+/build/
+/dist/
+*.spec

@@ -10,8 +10,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.models.general import General, Camp, Rarity, Attribute
 from src.models.team import Team
-from game_data.skills_config import get_skill_by_id
-from game_data.passive_skills_config import get_passive_skills_for_attributes, round_half_up
+from src.game_data.skills_config import get_skill_by_id
+from src.game_data.passive_skills_config import get_passive_skills_for_attributes, round_half_up
 
 
 def test_bravery_passive():
@@ -54,8 +54,8 @@ def test_bravery_passive():
     
     # 张任攻击目标
     original_damage = zhang_ren.calculate_damage_to(target)
-    with patch("game_data.passive_skills_config.random.choice", return_value="odd"), \
-         patch("game_data.passive_skills_config.random.randint", return_value=3):
+    with patch("src.game_data.passive_skills_config.random.choice", return_value="odd"), \
+         patch("src.game_data.passive_skills_config.random.randint", return_value=3):
         actual_damage = zhang_ren.attack(target)
     
     print(f"   基础伤害: {original_damage}")

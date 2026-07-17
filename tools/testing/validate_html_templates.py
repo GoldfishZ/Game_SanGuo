@@ -1,15 +1,17 @@
 """
-HTML模板括号校验工具
-解析 game.js / dom-utils.js 中的 HTML 字符串拼接代码，校验标签括号配对。
+HTML 模板括号校验工具。
+检查 game.js 中完整的 innerHTML 赋值，避免把跨行字符串片段误报为未闭合标签。
 
-用法: python tools/validate_html_templates.py
+用法: python tools/testing/validate_html_templates.py
 """
 
 import re
 import os
 import sys
+from pathlib import Path
 
-STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "src", "ui", "static")
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+STATIC_DIR = str(PROJECT_ROOT / "src" / "web" / "static")
 
 # 自闭合标签（不需要配对闭合标签）
 VOID_ELEMENTS = {
@@ -118,32 +120,17 @@ def validate_innerhtml_calls(filepath):
 
 def main():
     game_js = os.path.join(STATIC_DIR, "game.js")
-    dom_utils_js = os.path.join(STATIC_DIR, "dom-utils.js")
 
     all_errors = []
 
-    for filepath in [game_js, dom_utils_js]:
+    for filepath in [game_js]:
         if not os.path.exists(filepath):
             print(f"[SKIP] {filepath} — 文件不存在")
             continue
 
         print(f"[CHECK] {filepath}")
 
-        # 方式1: 逐行检查 HTML 标签
-        html_lines = extract_html_from_js(filepath)
-        line_errors = 0
-        for line_no, text in html_lines:
-            errors = validate_tags_in_line(text)
-            for err in errors:
-                all_errors.append(f"{os.path.basename(filepath)}:{line_no}: {err}")
-                line_errors += 1
-
-        if line_errors:
-            print(f"  ✗ 逐行检查发现 {line_errors} 个问题")
-        else:
-            print(f"  ✓ 逐行检查通过")
-
-        # 方式2: 检查 innerHTML 赋值
+        # 拼接表达式必须作为整体检查；逐行检查会把下一行的闭合标签误报。
         inner_errors = validate_innerhtml_calls(filepath)
         for err in inner_errors:
             all_errors.append(f"{os.path.basename(filepath)}: {err}")

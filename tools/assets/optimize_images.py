@@ -2,7 +2,7 @@
 图片优化工具
 将 PNG 武将图和背景图转换为 WebP 格式，减小文件大小。
 
-用法: python tools/optimize_images.py
+用法: python tools/assets/optimize_images.py
 
 输出:
   assets/images/generals_webp/  — 战斗用缩略图 (max 600px 高度, quality 80)
@@ -16,7 +16,7 @@ import os
 import sys
 from PIL import Image
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(__file__))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
 SRC_DIR = os.path.join(PROJECT_ROOT, "assets", "images")
 GENERALS_SRC = os.path.join(SRC_DIR, "generals")
 BACKGROUNDS_SRC = os.path.join(SRC_DIR, "backgrounds")

@@ -7,7 +7,7 @@ import random
 from typing import List, Dict, Optional, Tuple
 from src.models.general import General
 from src.models.team import Team, Camp
-from game_data.generals_config import get_all_generals, GENERAL_CREATORS
+from src.game_data.generals_config import get_all_generals, GENERAL_CREATORS
 
 
 class GamePhase:

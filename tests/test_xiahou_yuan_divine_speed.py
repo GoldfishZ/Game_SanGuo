@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from game_data.generals_config import get_general_by_name
+from src.game_data.generals_config import get_general_by_name
 from src.battle.battle_system import BattleContext
 from src.models.general import Camp, General, Rarity
 from src.models.team import Team

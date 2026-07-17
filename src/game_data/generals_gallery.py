@@ -3,11 +3,7 @@
 展示游戏中所有可用的武将和技能
 """
 
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from game_data.game_data_manager import game_data_manager
+from .game_data_manager import game_data_manager
 from src.models.general import Camp, Rarity
 
 

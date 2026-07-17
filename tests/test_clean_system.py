@@ -7,9 +7,9 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from game_data.game_data_manager import game_data_manager
-from game_data.generals_data import GENERALS_DATA
-from game_data.generals_config import get_general_by_name
+from src.game_data.game_data_manager import game_data_manager
+from src.game_data.generals_data import GENERALS_DATA
+from src.game_data.generals_config import get_general_by_name
 from src.models.team import Team
 from src.models.general import Camp, Rarity
 

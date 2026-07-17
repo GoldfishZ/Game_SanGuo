@@ -13,7 +13,7 @@ import traceback
 
 
 def run_tests(verbose: bool = False) -> int:
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     tests_dir = root / "tests"
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
