@@ -6,7 +6,7 @@
 <title>三国武将卡牌游戏</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script>window.gsap = window.gsap || null; if(!window.gsap) console.warn('GSAP unavailable, using CSS fallback');</script>
-<link rel="stylesheet" href="/styles.css?v=4">
+<link rel="stylesheet" href="/styles.css?v=11">
 </head>
 <body>
 
@@ -64,7 +64,7 @@
     <h2 id="form-title" style="color:var(--gold);margin-bottom:4px">玩家1 — 布置阵型</h2>
     <div class="form-layout">
       <div class="form-sidelist" id="form-list"></div>
-      <div class="form-grid-wrap">
+      <div class="form-grid-wrap" id="form-grid-wrap">
         <div class="form-row-labels">
           <div class="row-label front">前卫<span class="row-hint">承受普攻</span></div>
           <div class="row-label mid">中坚<span class="row-hint">受前排保护</span></div>
@@ -95,6 +95,7 @@
     <div class="battle-top-bar">
       <span id="bturn" style="font-size:15px;color:var(--gold)">第1回合 — 玩家1</span>
       <span id="bphase" class="phase-tag ph-skill" style="margin-left:8px">技能阶段</span>
+      <span id="battle-range-legend" class="battle-range-legend"></span>
       <span style="flex:1"></span>
       <span class="btn danger" onclick="quitToMenu()" style="font-size:11px;padding:4px 10px" data-tooltip="退出当前游戏，返回主菜单">✕ 退出</span>
     </div>
@@ -144,7 +145,7 @@
   <div id="scr-rules" class="screen">
     <div class="bamboo">
       <h2>游 戏 规 则</h2>
-      <div class="rule"><h3>阵型</h3><p>3行x4列方格，前列武将挡住后列。敌方只能攻击最前排武将。</p></div>
+      <div class="rule"><h3>阵型</h3><p>战场为4横排×3竖列。玩家1最右列、玩家2最左列是前卫，前卫会保护身后的中坚与后卫。</p></div>
       <div class="rule"><h3>伤害</h3><p>攻击方武力>目标武力: 伤害=武力差。攻击方武力<=目标武力: 伤害=min(3,(武力+智力)差)，最低1点。</p></div>
       <div class="rule"><h3>士气</h3><p>初始12点，共用士气池。技能消耗士气。后手士气上限+2。</p></div>
       <div class="rule"><h3>回合</h3><p>先手->后手交替。每回合: 1技能阶段->2普攻阶段。</p></div>
@@ -184,8 +185,8 @@
             <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:1px 3px;font-size:7px;text-align:center;color:#fff">许褚·募兵</div>
           </div>
           <div style="position:relative;width:65px;height:95px;border:2px solid #d4a030;border-radius:5px;overflow:hidden;box-shadow:0 0 14px rgba(255,210,70,.6)">
-            <img src="/generals/sun_jian.png" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'" alt="孙坚">
-            <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:1px 3px;font-size:7px;text-align:center;color:#fff">孙坚·复活</div>
+            <img src="/generals/dailai_dongzhu.png" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'" alt="带来洞主">
+            <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:1px 3px;font-size:7px;text-align:center;color:#fff">带来洞主·复活</div>
           </div>
           <div style="position:relative;width:65px;height:95px;border:2px solid rgba(100,100,100,.5);border-radius:5px;overflow:hidden;opacity:.45;filter:brightness(.4)">
             <img src="/generals/zhang_ren.png" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'" alt="张任">
@@ -234,8 +235,8 @@
 </div>
 
 <script src="/tooltips.js?v=12"></script>
-<script src="/tutorial.js?v=12"></script>
-<script src="/game.js?v=12"></script>
+<script src="/tutorial.js?v=13"></script>
+<script src="/game.js?v=17"></script>
 <script>
 // 出征计数
 (function() {

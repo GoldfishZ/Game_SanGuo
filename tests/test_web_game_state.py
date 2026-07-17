@@ -156,9 +156,158 @@ def test_web_serializes_frontend_skill_and_passive_state():
     data = main_web.STATE._team_json(player)["generals"][0]
 
     assert data["_targetType"] == "AREA_ENEMY"
+    assert data["skill_id"] == "thunder_strike"
     assert data["skill_cost"] == thunder.active_skill.morale_cost
+    assert data["_frontOnlyAttack"] is False
+    assert data["_forcedTargetId"] is None
     assert data["_fenceBroken"] is False
     assert data["_reviveUsed"] is False
+
+    target = get_general_by_name("张飞")
+    main_web.STATE.controller.player2.add_general_to_team(target)
+    thunder.add_buff("front_only_attack", 1, 1)
+    thunder.add_debuff("forced_attack_target", target, 1)
+    dynamic = main_web.STATE._team_json(player)["generals"][0]
+    assert dynamic["_frontOnlyAttack"] is True
+    assert dynamic["_forcedTargetId"] == target.general_id
+
+
+def test_web_meteor_rite_uses_selected_visual_vertical_column():
+    """前端选择的视觉竖列应映射到同一 logical row，而不是通用 2x2 区域。"""
+    main_web.STATE.reset()
+    controller = main_web.STATE.controller
+    xiao_qiao = get_general_by_name("小乔")
+    untouched = get_general_by_name("张飞")
+    targets = [get_general_by_name("曹操"), get_general_by_name("夏侯惇")]
+
+    controller.player1.add_general_to_team(xiao_qiao)
+    controller.player2.add_general_to_team(untouched)
+    for target in targets:
+        controller.player2.add_general_to_team(target)
+
+    controller.player1.team.position_general(xiao_qiao, 0, 0)
+    controller.player2.team.position_general(untouched, 0, 0)
+    controller.player2.team.position_general(targets[0], 1, 0)
+    controller.player2.team.position_general(targets[1], 1, 3)
+
+    main_web.STATE.phase = "battle"
+    main_web.STATE.battle_system = main_web.BattleSystem(
+        controller.player1.team,
+        controller.player2.team,
+        callbacks=None,
+        first_player_team_name=controller.player1.team.team_name,
+    )
+    untouched_hp = untouched.current_hp
+    target_hps = [target.current_hp for target in targets]
+
+    state = post("/api/battle/skill", {
+        "general_id": xiao_qiao.general_id,
+        "skill_row": 1,
+    })
+
+    assert "流星的仪式" in state["event"]
+    assert untouched.current_hp == untouched_hp
+    assert all(target.current_hp < hp for target, hp in zip(targets, target_hps))
+
+
+def test_web_area_skill_respects_player_selected_2x2_origin():
+    main_web.STATE.reset()
+    controller = main_web.STATE.controller
+    zhang_fei = get_general_by_name("张飞")
+    outside = get_general_by_name("甘宁")
+    selected = get_general_by_name("太史慈")
+    controller.player1.add_general_to_team(zhang_fei)
+    controller.player2.add_general_to_team(outside)
+    controller.player2.add_general_to_team(selected)
+    controller.player1.team.position_general(zhang_fei, 0, 0)
+    controller.player2.team.position_general(outside, 0, 0)
+    controller.player2.team.position_general(selected, 2, 3)
+    main_web.STATE.phase = "battle"
+    main_web.STATE.battle_system = main_web.BattleSystem(
+        controller.player1.team,
+        controller.player2.team,
+        callbacks=None,
+        first_player_team_name=controller.player1.team.team_name,
+    )
+    outside_hp = outside.current_hp
+    selected_hp = selected.current_hp
+
+    state = post("/api/battle/skill", {
+        "general_id": zhang_fei.general_id,
+        "area_row": 1,
+        "area_col": 2,
+    })
+
+    assert "轮枪战术" in state["event"]
+    assert outside.current_hp == outside_hp
+    assert selected.current_hp < selected_hp
+
+
+def setup_web_speed_judgment_battle(effect_type):
+    main_web.STATE.reset()
+    controller = main_web.STATE.controller
+    attacker = get_general_by_name("公孙瓒")
+    target = get_general_by_name("张飞")
+    controller.player1.add_general_to_team(attacker)
+    controller.player2.add_general_to_team(target)
+    controller.player1.team.position_general(attacker, 0, 0)
+    controller.player2.team.position_general(target, 0, 0)
+    if effect_type == "bonus_attack":
+        attacker.add_buff("attack_speed_judgment", 1, 1)
+    else:
+        attacker.add_debuff("attack_speed_required", 1, 1)
+    main_web.STATE.phase = "battle"
+    main_web.STATE.battle_system = main_web.BattleSystem(
+        controller.player1.team,
+        controller.player2.team,
+        callbacks=None,
+        first_player_team_name=controller.player1.team.team_name,
+    )
+    return attacker, target
+
+
+def test_web_attack_returns_successful_speed_judgment_for_animation():
+    attacker, target = setup_web_speed_judgment_battle("bonus_attack")
+    hp_before = target.current_hp
+
+    with patch("src.models.general.random.randint", return_value=3):
+        state = post("/api/battle/attack", {
+            "attacker_id": attacker.general_id,
+            "target_id": target.general_id,
+            "guess": "奇",
+        })
+
+    assert state["speed_judgment"] == {
+        "guess": "odd",
+        "dice": 3,
+        "parity": "odd",
+        "success": True,
+        "mode": "bonus_attack",
+        "message": "判定成功，获得追加普攻",
+    }
+    assert state["attack_result"]["performed"] is True
+    assert state["attack_result"]["damage"] == hp_before - target.current_hp
+    assert "掷出3点（奇），成功" in state["event"]
+
+
+def test_web_failed_required_speed_judgment_cancels_attack():
+    attacker, target = setup_web_speed_judgment_battle("attack_required")
+    hp_before = target.current_hp
+
+    with patch("src.models.general.random.randint", return_value=2):
+        state = post("/api/battle/attack", {
+            "attacker_id": attacker.general_id,
+            "target_id": target.general_id,
+            "guess": "奇",
+        })
+
+    assert state["speed_judgment"]["dice"] == 2
+    assert state["speed_judgment"]["success"] is False
+    assert state["speed_judgment"]["mode"] == "attack_required"
+    assert state["speed_judgment"]["message"] == "判定失败，本次普攻被取消"
+    assert state["attack_result"]["performed"] is False
+    assert target.current_hp == hp_before
+    assert "掷出2点（偶），失败" in state["event"]
 
 
 def test_web_reset_clears_previous_battle_metadata():

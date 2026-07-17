@@ -161,6 +161,7 @@ class GameState:
         gens = []
         for g in p.selected_generals:
             pos = p.team.get_general_position(g)
+            forced_target = g.get_forced_attack_target()
             gens.append({
                 "name": g.name, "id": g.general_id,
                 "hp": g.current_hp, "maxHp": g.max_hp,
@@ -170,6 +171,7 @@ class GameState:
                 "alive": g.is_alive,
                 "row": pos[0] if pos else -1, "col": pos[1] if pos else -1,
                 "skill": g.active_skill.name if g.active_skill else "",
+                "skill_id": g.active_skill.skill_id if g.active_skill else "",
                 "skill_desc": g.active_skill.description if g.active_skill else "",
                 "cooldown": g.active_skill_cooldown,
                 "image": g.image_file or "",
@@ -182,6 +184,8 @@ class GameState:
                 "_hasUsedSkill": g._has_used_skill_this_turn,
                 "_hasSpeedJudgment": g.has_buff_type("attack_speed_judgment"),
                 "_hasSpeedRequired": g.has_debuff_type("attack_speed_required"),
+                "_frontOnlyAttack": g.has_buff_type("front_only_attack"),
+                "_forcedTargetId": forced_target.general_id if forced_target else None,
                 "_targetType": g.active_skill.target_type.name if (g.active_skill and hasattr(g.active_skill, 'target_type')) else "",
                 "skill_cost": g.active_skill.morale_cost if g.active_skill else 0,
             })
@@ -367,8 +371,25 @@ def handle_api(path, body, handler):
             # 确定施法者所属队伍（用于士气扣除和目标选择）
             caster_team = (bs.team1 if caster in bs.team1.get_alive_generals()
                           else bs.team2)
+            skill_options = {}
+            try:
+                if body.get("area_row") is not None:
+                    skill_options["row"] = int(body["area_row"])
+                if body.get("area_col") is not None:
+                    skill_options["col"] = int(body["area_col"])
+            except (TypeError, ValueError):
+                skill_options = {}
+            if body.get("area_orientation") in ("horizontal", "vertical"):
+                skill_options["orientation"] = body["area_orientation"]
+            if body.get("skill_mode"):
+                skill_options["mode"] = body["skill_mode"]
+            if body.get("skill_timing"):
+                skill_options["timing"] = body["skill_timing"]
             if tt == TargetType.SELF:
-                targets = [caster]
+                # 石兵八阵虽标为 SELF，但实际需要玩家指定敌方 2x2 区域。
+                targets = ([skill_options] if
+                           caster.active_skill.skill_id == "stone_sentinel_maze"
+                           and skill_options else [caster])
             elif tt == TargetType.SINGLE_ALLY:
                 # 选己方武力最高者（若无则选自己）
                 allies = caster.get_team(bs).get_alive_generals() if hasattr(caster, 'get_team') else bs.current_side.get_alive_generals()
@@ -380,8 +401,7 @@ def handle_api(path, body, handler):
             elif tt == TargetType.ALL_ALLIES:
                 targets = caster_team.get_alive_generals()
             elif tt == TargetType.AREA_ALLY:
-                # 此类技能根据施法者阵型自行计算范围，不需要敌方占位目标。
-                targets = []
+                targets = [skill_options] if skill_options else []
             elif tt in (TargetType.SINGLE_ENEMY, TargetType.FRONT_ROW_ENEMY, TargetType.BACK_ROW_ENEMY, TargetType.RANDOM_ENEMY):
                 enemy_team = bs.team2 if caster_team == bs.team1 else bs.team1
                 enemy = enemy_team.get_alive_generals()
@@ -393,22 +413,19 @@ def handle_api(path, body, handler):
                 targets = enemy_team.get_alive_generals()
             elif tt == TargetType.AREA_ENEMY:
                 enemy_team = bs.team2 if caster_team == bs.team1 else bs.team1
-                area_r = body.get("area_row", None)
-                area_c = body.get("area_col", None)
-                if area_r is not None and area_c is not None:
-                    # 前端选择了2x2区域——只取该区域内的存活武将
+                if caster.active_skill.skill_id == "meteor_rite":
+                    # 新的 4×3 视觉布局中，logical row 对应一整条视觉竖列。
+                    # 用选项字典传递给技能，避免被通用 2×2 区域逻辑改写。
                     try:
-                        area_r = int(area_r); area_c = int(area_c)
+                        skill_row = int(body.get("skill_row"))
                     except (TypeError, ValueError):
-                        area_r = area_c = None
-                    if area_r is not None:
-                        targets = [g for g in enemy_team.get_alive_generals()
-                                   if area_r <= enemy_team.get_general_position(g)[0] <= area_r + 1
-                                   and area_c <= enemy_team.get_general_position(g)[1] <= area_c + 1]
-                    else:
-                        targets = enemy_team.get_alive_generals()[:2]
+                        skill_row = None
+                    targets = [{"row": skill_row}] if skill_row in range(3) else []
+                elif skill_options:
+                    # 所有可选矩形范围统一传选区起点，由各技能按自身尺寸结算。
+                    targets = [skill_options]
                 else:
-                    # 未选区域——传空列表，技能内部自动选择最佳块
+                    # CLI/旧客户端未选区域时保留技能内部的自动选择兜底。
                     targets = []
             else:
                 enemy_team = bs.team2 if caster_team == bs.team1 else bs.team1
@@ -436,6 +453,8 @@ def handle_api(path, body, handler):
         enemy_team = bs._get_enemy_team()
         attacker = None
         target = None
+        attack_result = None
+        speed_judgment = None
 
         attacker_id = body.get("attacker_id", None)
         target_id = body.get("target_id", None)
@@ -469,14 +488,50 @@ def handle_api(path, body, handler):
                 return STATE.to_json()
             target_hp_before = target.current_hp
             guess = body.get("guess", None)  # 攻速判定奇偶猜测
+            speed_mode = None
+            if attacker.has_debuff_type("attack_speed_required"):
+                speed_mode = "attack_required"
+            elif attacker.has_buff_type("attack_speed_judgment"):
+                speed_mode = "bonus_attack"
+            if speed_mode:
+                # 避免读取到该武将上一回合遗留的判定结果。
+                attacker.last_attack_speed_judgment = None
             target_pos_before = (c.player1.team.get_general_position(target) or
                                 c.player2.team.get_general_position(target))
             dmg = attacker.attack(target, guess)
+            if speed_mode and attacker.last_attack_speed_judgment:
+                speed_judgment = dict(attacker.last_attack_speed_judgment)
+                speed_judgment["mode"] = speed_mode
+                if speed_mode == "attack_required":
+                    speed_judgment["message"] = (
+                        "判定成功，普攻正常发动"
+                        if speed_judgment["success"]
+                        else "判定失败，本次普攻被取消"
+                    )
+                else:
+                    speed_judgment["message"] = (
+                        "判定成功，获得追加普攻"
+                        if speed_judgment["success"]
+                        else "判定失败，本次没有追加普攻"
+                    )
+            attack_performed = not (
+                speed_mode == "attack_required"
+                and speed_judgment
+                and not speed_judgment["success"]
+            )
+            attack_result = {
+                "damage": dmg,
+                "performed": attack_performed,
+                "target_hp_before": target_hp_before,
+                "target_hp_after": target.current_hp,
+            }
             # 保留位置快照，便于未来阵型类普攻效果给出准确提示。
             target_pos_after = (c.player1.team.get_general_position(target) or
                                c.player2.team.get_general_position(target))
             pos_changed = (target_pos_before != target_pos_after)
-            if dmg == 0:
+            if not attack_performed:
+                STATE.last_event = f"{attacker.name} 攻速判定失败，未能对 {target.name} 发动普攻"
+            elif dmg == 0:
                 STATE.last_event = f"{attacker.name} 攻击 {target.name}，但被防栅/护盾挡下"
             elif pos_changed:
                 STATE.last_event = f"{attacker.name} 攻击触发阵位变化！{target.name} 受 {dmg} 点伤害"
@@ -487,11 +542,23 @@ def handle_api(path, body, handler):
             # 检查魅力反弹是否击杀了攻击者
             if not attacker.is_alive:
                 STATE.last_event += f" {attacker.name} 被魅力反噬阵亡！"
+            if speed_judgment:
+                guess_label = "奇" if speed_judgment["guess"] == "odd" else "偶"
+                parity_label = "奇" if speed_judgment["parity"] == "odd" else "偶"
+                STATE.last_event += (
+                    f" 攻速判定：选择{guess_label}，掷出{speed_judgment['dice']}点"
+                    f"（{parity_label}），{'成功' if speed_judgment['success'] else '失败'}。"
+                )
             if bs._is_game_over():
                 STATE.finish_battle()
         else:
             STATE.last_event = "请选择合法的普攻目标（只能攻击敌方前排）"
-        return STATE.to_json()
+        response = STATE.to_json()
+        if attack_result is not None:
+            response["attack_result"] = attack_result
+        if speed_judgment is not None:
+            response["speed_judgment"] = speed_judgment
+        return response
 
     # GET /api/state
     if path == "/api/state":
@@ -588,7 +655,7 @@ class GameServer(BaseHTTPRequestHandler):
 
 def start():
     os.makedirs(WEB_DIR, exist_ok=True)
-    port = int(os.environ.get("PORT", "8088"))
+    port = int(os.environ.get("PORT", "8089"))
     server = HTTPServer(("0.0.0.0", port), GameServer)
     print("=== 三国武将卡牌游戏 Web 版 ===")
     print(f"   打开浏览器访问: http://localhost:{port}")

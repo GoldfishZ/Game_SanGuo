@@ -82,6 +82,31 @@ def test_jiangdong_beauty_cleanses_heals_or_raises_hp_cap_in_3x3():
     assert outside.current_hp == 8
 
 
+def test_jiangdong_beauty_respects_selected_3x3_containing_caster():
+    da_qiao = get_general_by_name("大乔")
+    left_outside = make_ally("左侧选区外")
+    right_inside = make_ally("右侧选区内")
+    team = Team("吴军")
+    enemy_team = Team("敌军")
+    for general in [da_qiao, left_outside, right_inside]:
+        team.add_general(general)
+    team.position_general(da_qiao, 1, 1)
+    team.position_general(left_outside, 1, 0)
+    team.position_general(right_inside, 1, 3)
+    left_max_hp = left_outside.max_hp
+    right_max_hp = right_inside.max_hp
+
+    result = team.use_skill(
+        da_qiao,
+        [{"row": 0, "col": 1}],
+        BattleContext(team, enemy_team),
+    )
+
+    assert result["success"] is True
+    assert left_outside.max_hp == left_max_hp
+    assert right_inside.max_hp == right_max_hp + 1
+
+
 if __name__ == "__main__":
     test_da_qiao_data_and_skill()
     test_jiangdong_beauty_cleanses_heals_or_raises_hp_cap_in_3x3()

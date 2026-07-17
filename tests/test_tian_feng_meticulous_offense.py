@@ -91,6 +91,22 @@ def test_meticulous_offense_morale_reward_fails_if_buffed_general_dies():
     assert team.pending_morale_rewards == []
 
 
+def test_meticulous_offense_respects_selected_front_2x2():
+    tian_feng, front_a, front_b, front_c, outside, team, enemy_team = build_front_block_team()
+
+    result = team.use_skill(
+        tian_feng,
+        [{"row": 0, "col": 0}],
+        BattleContext(team, enemy_team),
+    )
+
+    assert result["block"] == [(0, 0), (0, 1), (1, 0), (1, 1)]
+    assert front_a.get_effective_force() == 8
+    assert front_b.get_effective_force() == 8
+    assert front_c.get_effective_force() == 5
+    assert outside.get_effective_force() == 5
+
+
 if __name__ == "__main__":
     test_tian_feng_data_and_skill()
     test_meticulous_offense_buffs_front_2x2_and_rewards_morale_next_turn()

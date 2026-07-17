@@ -73,6 +73,33 @@ def test_spear_wheel_damages_best_2x2_block_by_weakest_force_basis():
     assert outside.current_hp == outside.max_hp
 
 
+def test_spear_wheel_respects_player_selected_2x2_block():
+    zhang_fei = get_general_by_name("张飞")
+    team = Team("张飞队")
+    enemy_team = Team("敌队")
+    team.add_general(zhang_fei)
+    crowded_a = make_enemy("自动区A", 3)
+    crowded_b = make_enemy("自动区B", 4)
+    selected = make_enemy("玩家选中", 5)
+    for enemy in [crowded_a, crowded_b, selected]:
+        enemy_team.add_general(enemy)
+    enemy_team.position_general(crowded_a, 0, 0)
+    enemy_team.position_general(crowded_b, 0, 1)
+    enemy_team.position_general(selected, 2, 3)
+    selected_hp = selected.current_hp
+
+    result = team.use_skill(
+        zhang_fei,
+        [{"row": 1, "col": 2}],
+        BattleContext(team, enemy_team),
+    )
+
+    assert result["block"] == [(1, 2), (1, 3), (2, 2), (2, 3)]
+    assert selected.current_hp < selected_hp
+    assert crowded_a.current_hp == crowded_a.max_hp
+    assert crowded_b.current_hp == crowded_b.max_hp
+
+
 if __name__ == "__main__":
     test_zhang_fei_data_and_skill()
     test_spear_wheel_damages_best_2x2_block_by_weakest_force_basis()

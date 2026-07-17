@@ -23,7 +23,7 @@
     {
       id: "formation",
       title: "第二步：布置阵型",
-      text: "点击左侧武将名选中，再点击右侧格子放置。<br><b>前卫</b>（第一行）承受敌方普攻，保护后排。<br>高武力武将适合放在前卫，智力型武将放在后排。",
+      text: "点击左侧武将名选中，再点击右侧格子放置。<br>战场为<b>4排×3列</b>：玩家1最右列、玩家2最左列是前卫。<br>高武力武将适合放在前卫，智力型武将放在后卫。",
       target: function() { return document.getElementById("form-grid") || document.getElementById("scr-formation"); },
       screen: "formation"
     },

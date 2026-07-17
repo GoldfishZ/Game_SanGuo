@@ -197,26 +197,41 @@ class Team:
                 return general
         return None
 
-    def apply_temporary_2x2_rearrangement(self) -> dict:
+    def apply_temporary_2x2_rearrangement(self, selected_row=None, selected_col=None) -> dict:
         """临时重排敌方一个 2x2 方格内的武将，回合结束后可恢复。"""
         best_positions = []
         best_generals = []
 
-        for row in range(2):
-            for col in range(3):
-                block_positions = [
-                    (row, col), (row, col + 1),
-                    (row + 1, col), (row + 1, col + 1),
-                ]
-                block_generals = [
-                    self.formation[r][c]
-                    for r, c in block_positions
-                    if self.formation[r][c] is not None
-                    and self.formation[r][c].is_alive
-                ]
-                if len(block_generals) > len(best_generals):
-                    best_positions = block_positions
-                    best_generals = block_generals
+        if selected_row is not None and selected_col is not None:
+            row = max(0, min(1, int(selected_row)))
+            col = max(0, min(2, int(selected_col)))
+            best_positions = [
+                (row, col), (row, col + 1),
+                (row + 1, col), (row + 1, col + 1),
+            ]
+            best_generals = [
+                self.formation[r][c]
+                for r, c in best_positions
+                if self.formation[r][c] is not None
+                and self.formation[r][c].is_alive
+            ]
+
+        if selected_row is None or selected_col is None:
+            for row in range(2):
+                for col in range(3):
+                    block_positions = [
+                        (row, col), (row, col + 1),
+                        (row + 1, col), (row + 1, col + 1),
+                    ]
+                    block_generals = [
+                        self.formation[r][c]
+                        for r, c in block_positions
+                        if self.formation[r][c] is not None
+                        and self.formation[r][c].is_alive
+                    ]
+                    if len(block_generals) > len(best_generals):
+                        best_positions = block_positions
+                        best_generals = block_generals
 
         if not best_generals:
             return {"success": False, "message": "目标 2x2 方格内没有可移动武将"}

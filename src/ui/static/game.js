@@ -270,6 +270,9 @@ function renderFormation() {
   var r = G;
   if (!r) return;
   var teamKey = r.phase === "formation_p1" ? "p1" : "p2";
+  var gridWrap = document.getElementById("form-grid-wrap");
+  gridWrap.classList.remove("p1", "p2");
+  gridWrap.classList.add(teamKey);
   document.getElementById("form-title").textContent =
     (r.phase === "formation_p1" ? "玩家1" : "玩家2") + " — 布置阵型";
   var generals = r[teamKey] ? (r[teamKey].generals || []) : [];
@@ -283,7 +286,7 @@ function renderFormList(generals) {
     return '<div class="gi' + (isActive ? " active" : "") + '" onclick="selectFormGen(' + g.id + ')">' +
       '<span style="font-weight:600">' + g.name + '</span>' +
       '<span style="font-size:10px;color:var(--muted);margin-left:6px">' +
-      (g.row >= 0 ? "已放:(" + g.row + "," + g.col + ")" : "未放置") + '</span></div>';
+      (g.row >= 0 ? "已放：第" + (g.col + 1) + "排 · " + ["前卫", "中坚", "后卫"][g.row] : "未放置") + '</span></div>';
   }).join("");
   document.getElementById("form-list").innerHTML = html ||
     '<div style="font-size:11px;color:var(--muted);padding:8px">无武将可选</div>';
@@ -295,17 +298,28 @@ function renderFormGrid(generals) {
     if (g.row >= 0 && g.col >= 0) grid[g.row][g.col] = g;
   });
   var html = "";
+  var isP1 = G.phase === "formation_p1";
   for (var r = 0; r < 3; r++) {
     for (var c = 0; c < 4; c++) {
       var g = grid[r][c];
+      var visual = formationVisualPosition(isP1, r, c);
+      var style = ' style="grid-row:' + visual.row + ';grid-column:' + visual.col + '"';
       if (g) {
-        html += '<div class="form-cell filled" onclick="placeGeneral(' + r + ',' + c + ')">' + g.name + '</div>';
+        html += '<div class="form-cell filled"' + style + ' onclick="placeGeneral(' + r + ',' + c + ')">' + g.name + '</div>';
       } else {
-        html += '<div class="form-cell' + (selectedFormGen ? " droptarget" : "") + '" onclick="placeGeneral(' + r + ',' + c + ')">+</div>';
+        html += '<div class="form-cell' + (selectedFormGen ? " droptarget" : "") + '"' + style + ' onclick="placeGeneral(' + r + ',' + c + ')">+</div>';
       }
     }
   }
   document.getElementById("form-grid").innerHTML = html;
+}
+
+/** 将后端 3 层深度×4条战线转成前端 4排×3列，并让双方前卫朝向中线。 */
+function formationVisualPosition(isP1, logicalRow, logicalCol) {
+  return {
+    row: logicalCol + 1,
+    col: isP1 ? 3 - logicalRow : logicalRow + 1
+  };
 }
 
 function selectFormGen(id) {
@@ -414,6 +428,177 @@ function highlightActiveSide(r) {
   }
 }
 
+// Skill geometry is expressed in logical coordinates: row=front/mid/back, col=battle lane.
+var SKILL_RANGE_RULES = {
+  siege_all_army:              { pattern:"ally_vertical_column", label:"技能：己方同一竖列" },
+  stone_sentinel_maze:         { pattern:"enemy_select_2x2", label:"技能：敌方可选2×2区域" },
+  spear_wheel_tactics:         { pattern:"enemy_select_2x2", label:"技能：敌方可选2×2区域" },
+  thunder_strike:              { pattern:"enemy_select_2x2", label:"技能：敌方可选2×2区域" },
+  taunt:                       { pattern:"enemy_select_2x2", label:"技能：敌方可选2×2区域" },
+  discord_strategy:            { pattern:"enemy_select_2x2", label:"技能：敌方可选2×2区域" },
+  tooth_for_tooth:             { pattern:"enemy_select_area", label:"技能：敌方可选2×2或2×1区域" },
+  momentary_order:             { pattern:"ally_select_2x2_self", label:"技能：己方可选含自身2×2区域" },
+  meticulous_offense:          { pattern:"ally_select_front_2x2", label:"技能：己方可选前方2×2区域" },
+  jiangdong_beauty:            { pattern:"ally_select_3x3_self", label:"技能：己方可选含自身3×3区域" },
+  grand_cavalry_order:         { pattern:"ally_vertical_column", label:"技能：己方同一竖列" },
+  bandit_suppression_order:    { pattern:"ally_vertical_column", label:"技能：己方同一竖列" },
+  white_horse_formation:       { pattern:"ally_vertical_column", label:"技能：己方同一竖列" },
+  master_teaching:             { pattern:"ally_vertical_column", label:"技能：己方同一竖列" },
+  imperial_edict:              { pattern:"ally_highest", label:"技能：己方武力最高者" },
+  destructive_advice:          { pattern:"ally_highest", label:"技能：己方武力最高者" },
+  flying_dance:                { pattern:"all_allies", label:"技能：己方全体" },
+  fence_rebuild:               { pattern:"allied_fence", label:"技能：己方防栅武将" },
+  taiping_arts:                { pattern:"fallen_allies", label:"技能：己方阵亡武将" },
+  corrupt_dance:               { pattern:"all_enemies", label:"技能：敌方全体" },
+  meteor_rite:                 { pattern:"enemy_select_vertical_column", label:"技能：敌方可选一竖列" },
+  small_chain_plot:            { pattern:"enemy_select_2x1", label:"技能：敌方可选2×1区域" },
+  weakening_chain:             { pattern:"enemy_candidates", label:"技能：敌方单体／连计扩散" }
+};
+
+function rangeCell(teamKey, row, col) {
+  var gridId = teamKey === "p1" ? "#bside1-grid" : "#bside2-grid";
+  return document.querySelector(gridId + ' .bcell[data-row="' + row + '"][data-col="' + col + '"]');
+}
+
+function markRangePosition(teamKey, row, col, kind) {
+  var cell = rangeCell(teamKey, row, col);
+  if (cell) cell.classList.add(kind === "attack" ? "range-attack" : "range-skill");
+}
+
+function markGeneralRange(teamKey, general, kind) {
+  if (general && general.row >= 0 && general.col >= 0) {
+    markRangePosition(teamKey, general.row, general.col, kind);
+  }
+}
+
+function aliveGenerals(teamKey) {
+  var team = G && G[teamKey];
+  return team ? team.generals.filter(function(g) { return g.alive && g.row >= 0; }) : [];
+}
+
+function markWholeBoard(teamKey, kind) {
+  for (var row = 0; row < 3; row++) {
+    for (var col = 0; col < 4; col++) markRangePosition(teamKey, row, col, kind);
+  }
+}
+
+function markAliveTeam(teamKey, kind, predicate) {
+  aliveGenerals(teamKey).forEach(function(g) {
+    if (!predicate || predicate(g)) markGeneralRange(teamKey, g, kind);
+  });
+}
+
+function markCoordinates(teamKey, coords, kind) {
+  coords.forEach(function(pos) { markRangePosition(teamKey, pos[0], pos[1], kind); });
+}
+
+function highestForceGeneral(teamKey) {
+  var list = aliveGenerals(teamKey).slice();
+  list.sort(function(a, b) {
+    return (b.effective_force - a.effective_force) ||
+      (b.effective_intelligence - a.effective_intelligence) || (b.hp - a.hp);
+  });
+  return list[0] || null;
+}
+
+function attackRangeFor(general, enemyKey) {
+  var enemies = aliveGenerals(enemyKey);
+  var fronts = [];
+  for (var lane = 0; lane < 4; lane++) {
+    var laneGenerals = enemies.filter(function(g) { return g.col === lane; })
+      .sort(function(a, b) { return a.row - b.row; });
+    if (!laneGenerals.length) continue;
+    var front = laneGenerals[0];
+    var hiddenStillBlocks = front._ambushHidden && enemies.length > 1;
+    if (!hiddenStillBlocks) fronts.push(front);
+  }
+  if (general._frontOnlyAttack) {
+    fronts = fronts.filter(function(target) { return target.col === general.col; });
+  }
+  if (general._forcedTargetId) {
+    fronts = fronts.filter(function(target) { return target.id === general._forcedTargetId; });
+  }
+  return fronts;
+}
+
+function markSkillRange(general, allyKey, enemyKey) {
+  var rule = SKILL_RANGE_RULES[general.skill_id];
+  var pattern = rule ? rule.pattern : "";
+  var label = rule ? rule.label : "技能：" + (general.skill || "无");
+
+  if (!pattern) {
+    if (general._targetType === "ALL_ALLIES") pattern = "all_allies";
+    else if (general._targetType === "ALL_ENEMIES") pattern = "all_enemies";
+    else if (general._targetType === "SINGLE_ALLY") pattern = "ally_highest";
+    else if (general._targetType === "SINGLE_ENEMY") pattern = "enemy_candidates";
+    else if (general._targetType === "AREA_ENEMY") pattern = "enemy_select_area";
+    else pattern = "self";
+  }
+
+  if (pattern === "self") {
+    markGeneralRange(allyKey, general, "skill");
+  } else if (pattern === "ally_vertical_column") {
+    // 同一逻辑 row 在转置后的 4×3 战场中是一整条视觉竖列。
+    for (var lane = 0; lane < 4; lane++) {
+      markRangePosition(allyKey, general.row, lane, "skill");
+      var columnCell = rangeCell(allyKey, general.row, lane);
+      if (columnCell) columnCell.classList.add("range-vertical-column");
+    }
+  } else if (pattern === "all_allies") {
+    markAliveTeam(allyKey, "skill");
+  } else if (pattern === "allied_fence") {
+    markAliveTeam(allyKey, "skill", function(g) { return (g.attributes || []).indexOf("防栅") >= 0; });
+  } else if (pattern === "fallen_allies") {
+    (G[allyKey].generals || []).forEach(function(g) {
+      if (!g.alive) markGeneralRange(allyKey, g, "skill");
+    });
+  } else if (pattern === "ally_highest") {
+    markGeneralRange(allyKey, highestForceGeneral(allyKey), "skill");
+  } else if (pattern === "ally_select_2x2_self") {
+    getRectAreaCandidates(allyKey, general, { height:2, width:2, constraint:"contains_caster" })
+      .forEach(function(candidate) { markCoordinates(allyKey, candidate.positions, "skill"); });
+  } else if (pattern === "ally_select_front_2x2") {
+    getRectAreaCandidates(allyKey, general, { height:2, width:2, constraint:"front_of_caster" })
+      .forEach(function(candidate) { markCoordinates(allyKey, candidate.positions, "skill"); });
+  } else if (pattern === "ally_select_3x3_self") {
+    getRectAreaCandidates(allyKey, general, { height:3, width:3, constraint:"contains_caster" })
+      .forEach(function(candidate) { markCoordinates(allyKey, candidate.positions, "skill"); });
+  } else if (pattern === "all_enemies" || pattern === "enemy_candidates") {
+    markAliveTeam(enemyKey, "skill");
+  } else if (pattern.indexOf("enemy_select_") === 0) {
+    markWholeBoard(enemyKey, "skill");
+  }
+  return label;
+}
+
+function applySelectionRangePreview() {
+  var legend = document.getElementById("battle-range-legend");
+  document.querySelectorAll(".bside").forEach(function(side) { side.classList.remove("selection-active"); });
+  if (!selectedAttacker || !G || !legend) {
+    if (legend) { legend.style.display = "none"; legend.innerHTML = ""; }
+    return;
+  }
+
+  var allyKey = currentTeamKey();
+  var enemyKey = allyKey === "p1" ? "p2" : "p1";
+  var selectedSide = document.getElementById(allyKey === "p1" ? "bside1" : "bside2");
+  if (selectedSide) selectedSide.classList.add("selection-active");
+
+  var parts = [];
+  if (!selectedAttacker.general._hasAttacked) {
+    attackRangeFor(selectedAttacker.general, enemyKey).forEach(function(target) {
+      markGeneralRange(enemyKey, target, "attack");
+    });
+    parts.push('<span class="range-key attack">普攻可达</span>');
+  }
+  if (battlePhase !== "target" && selectedAttacker.general.skill) {
+    var skillLabel = markSkillRange(selectedAttacker.general, allyKey, enemyKey);
+    parts.push('<span class="range-key skill">' + skillLabel + '</span>');
+  }
+  legend.innerHTML = parts.join("");
+  legend.style.display = parts.length ? "inline-flex" : "none";
+}
+
 function renderBattle() {
   var r = G;
   if (!r) return call("/state").then(renderBattle);
@@ -432,6 +617,7 @@ function renderBattle() {
 
     setStatus(r.event || "👆 点击己方武将，选择本回合动作");
     updateBattlePhaseUI();
+    applySelectionRangePreview();
   } catch (e) {
     setStatus("渲染错误: " + e.message);
     console.error("renderBattle error:", e);
@@ -444,10 +630,8 @@ function renderBattle() {
  * @param {object} p        - 队伍数据 (r.p1 或 r.p2)
  * @param {boolean} isAlly  - 是否当前回合方
  *
- * 视觉布局:
- *   P1(bside1-grid): row=0(前排)→grid-row:3(底部), row=2(后排)→grid-row:1(顶部)
- *   P2(bside2-grid): row=0(前排)→grid-row:1(顶部), row=2(后排)→grid-row:3(底部)
- *   双方前排紧邻战场中线，实现"短兵相接"
+ * 视觉布局为 4排×3列：后端 col 对应视觉排，后端 row 对应前/中/后列。
+ * 玩家1 row=0 在最右列，玩家2 row=0 在最左列，双方前卫朝向战场中线。
  */
 function renderBattleGrid(gridId, p, isAlly) {
   var grid = [[null,null,null,null], [null,null,null,null], [null,null,null,null]];
@@ -461,12 +645,13 @@ function renderBattleGrid(gridId, p, isAlly) {
   for (var r = 0; r < 3; r++) {
     for (var c = 0; c < 4; c++) {
       var g = grid[r][c];
-      var gridRow = (gridId === "bside1-grid") ? (3 - r) : (r + 1);
+      var visual = formationVisualPosition(gridId === "bside1-grid", r, c);
 
       if (g) {
-        cells += buildBcellHTML(g, r, c, gridRow, isAlly);
+        cells += buildBcellHTML(g, r, c, visual.row, visual.col, isAlly);
       } else {
-        cells += '<div class="bcell empty" style="grid-row:' + gridRow + ';grid-column:' + (c+1) + ';font-size:9px;color:#3a2e1c">—</div>';
+        cells += '<div class="bcell empty" data-row="' + r + '" data-col="' + c +
+          '" style="grid-row:' + visual.row + ';grid-column:' + visual.col + ';font-size:9px;color:#3a2e1c">—</div>';
       }
     }
   }
@@ -474,7 +659,7 @@ function renderBattleGrid(gridId, p, isAlly) {
 }
 
 /** 构建单个武将格子的 HTML（纯函数，便于测试和维护） */
-function buildBcellHTML(g, r, c, gridRow, isAlly) {
+function buildBcellHTML(g, r, c, gridRow, gridColumn, isAlly) {
   var hpPct = g.maxHp > 0 ? (g.hp / g.maxHp * 100) : 0;
   var hpClass = hpPct > 60 ? "" : (hpPct > 30 ? "warn" : "danger");
   var imgSrc = g.image ? "/generals/" + g.image : "";
@@ -515,7 +700,7 @@ function buildBcellHTML(g, r, c, gridRow, isAlly) {
     ' data-tooltip="<b>' + g.name + '</b> 武' + effForce + ' 智' + effIntel +
     ' HP ' + g.hp + '/' + g.maxHp + '<br>技能：' + (g.skill || "无") + '<br>' +
     (g.skill_desc || "") + '<br>属性：' + attrStr + '"' +
-    ' style="grid-row:' + gridRow + ';grid-column:' + (c + 1) + '">' +
+    ' style="grid-row:' + gridRow + ';grid-column:' + gridColumn + '">' +
     (imgSrc ? '<img src="' + imgSrc + '">' : "") +
     '<div class="bcell-tip"><img src="' + (imgSrc || "") + '"><div class="tip-name">' + g.name +
     '</div><div class="tip-stat">武' + effForce + ' 智' + effIntel + ' | ' + (g.skill || "无") +
@@ -657,20 +842,30 @@ async function onBattleEnemyCell(r, c) {
     }
   }
 
-  if (aCell && tCell) {
-    animAttack(aCell, tCell, Math.max(1, (selectedAttacker.general.force || 5) - (target.force || 3)));
-  }
-  return sleep(250).then(function() {
-    return call("/battle/attack", {
-      attacker_id: selectedAttacker.general.id,
-      target_id: target.id,
-      guess: guess
-    });
-  }).then(function() {
-    clearBattleSelection();
-    if (G && G.phase === "over") { showGameOver(); return; }
-    return renderBattle();
+  setStatus(guess ? "正在进行攻速判定……" : "正在发动普攻……");
+  var result = await call("/battle/attack", {
+    attacker_id: selectedAttacker.general.id,
+    target_id: target.id,
+    guess: guess
   });
+  if (!result) {
+    setStatus("普攻请求失败，请检查服务器连接");
+    return;
+  }
+
+  if (result.speed_judgment) {
+    await showSpeedJudgment(result.speed_judgment);
+  }
+
+  var attackResult = result.attack_result;
+  if (attackResult && attackResult.performed && aCell && tCell) {
+    animAttack(aCell, tCell, attackResult.damage || 0);
+    await sleep(420);
+  }
+
+  clearBattleSelection();
+  if (G && G.phase === "over") { showGameOver(); return; }
+  return renderBattle();
 }
 
 /** 进入瞄准模式 */
@@ -699,15 +894,14 @@ async function useSkill() {
   if (selectedAttacker.general.cooldown) { setStatus(sk + " 冷却中 (剩余" + selectedAttacker.general.cooldown + "回合)"); return; }
   if (selectedAttacker.general._hasUsedSkill) { setStatus(selectedAttacker.general.name + " 本回合已使用过技能"); return; }
 
-  // 区域选择类技能（雷击等）：先选区域再猜奇偶
-  var targetType = selectedAttacker.general._targetType || "";
-  var area = null;
+  // 按技能规则先选择实际落点；取消选区时不消耗技能和士气。
+  var skillId = selectedAttacker.general.skill_id || "";
+  var castOptions = await chooseSkillCastOptions(selectedAttacker.general);
+  if (castOptions === null) return;
   var guess = null;
-  if (targetType === "AREA_ENEMY") {
-    area = await selectAreaForSkill();
-    if (!area) { return; }  // 取消
-    guess = await askOddEven("猜奇偶——猜错则敌方受雷击伤害");
-    if (!guess) { return; }
+  if (skillId === "thunder_strike") {
+    guess = await askOddEven("雷击判定——目标猜中则避开伤害，猜错则受到雷击");
+    if (!guess) return;
   }
 
   setStatus("正在使用 " + sk + "...");
@@ -732,7 +926,14 @@ async function useSkill() {
   });
 
   var body = { general_id: selectedAttacker.general.id };
-  if (area) { body.area_row = area.r; body.area_col = area.c; }
+  if (castOptions.area) {
+    body.area_row = castOptions.area.r;
+    body.area_col = castOptions.area.c;
+    body.area_orientation = castOptions.area.orientation || undefined;
+  }
+  if (castOptions.skillRow !== undefined) body.skill_row = castOptions.skillRow;
+  if (castOptions.mode) body.skill_mode = castOptions.mode;
+  if (castOptions.timing) body.skill_timing = castOptions.timing;
   if (guess) { body.guess = guess; }
   return call("/battle/skill", body).then(function(result) {
     if (!result) {
@@ -805,49 +1006,345 @@ function askOddEven(msg) {
   });
 }
 
-/**
- * 区域选择弹窗（雷击等 AREA_ENEMY 技能）
- * 在敌方阵型上高亮可选的 2x2 区域，玩家点击选择
- * @returns {Promise<{r: number, c: number}|null>}
- */
-function selectAreaForSkill() {
+/** 将服务器返回的真实骰点以滚动动画呈现，并明确显示判定影响。 */
+function showSpeedJudgment(judgment) {
+  return new Promise(function(resolve) {
+    var faces = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
+    var overlay = document.createElement("div");
+    overlay.className = "speed-judgment-overlay";
+    overlay.innerHTML =
+      '<div class="speed-judgment-panel">' +
+      '<div class="speed-title">攻速判定</div>' +
+      '<div class="speed-choice">你选择了 <strong>' + (judgment.guess === "odd" ? "奇" : "偶") + '</strong></div>' +
+      '<div class="speed-die rolling">⚀</div>' +
+      '<div class="speed-points">正在掷骰……</div>' +
+      '<div class="speed-result"></div>' +
+      '<div class="speed-message"></div>' +
+      '<div class="speed-continue">点击任意位置继续</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    var die = overlay.querySelector(".speed-die");
+    var points = overlay.querySelector(".speed-points");
+    var result = overlay.querySelector(".speed-result");
+    var message = overlay.querySelector(".speed-message");
+    var frame = 0;
+    var finished = false;
+    var closeTimer = null;
+
+    function close() {
+      if (!finished) return;
+      if (closeTimer) clearTimeout(closeTimer);
+      overlay.remove();
+      resolve();
+    }
+    overlay.addEventListener("click", close);
+
+    function rollFrame() {
+      if (frame < 15) {
+        die.textContent = faces[Math.floor(Math.random() * faces.length)];
+        die.style.transform = "rotate(" + (frame * 31) + "deg) scale(" + (1 + (frame % 3) * 0.08) + ")";
+        frame++;
+        setTimeout(rollFrame, 35 + frame * 7);
+        return;
+      }
+
+      var dice = Math.max(1, Math.min(6, parseInt(judgment.dice) || 1));
+      var parity = judgment.parity === "odd" ? "奇" : "偶";
+      die.classList.remove("rolling");
+      die.style.transform = "rotate(0deg) scale(1)";
+      die.textContent = faces[dice - 1];
+      points.textContent = dice + " 点 · " + parity;
+      result.textContent = judgment.success ? "判定成功" : "判定失败";
+      result.className = "speed-result " + (judgment.success ? "success" : "failure");
+      message.textContent = judgment.message || "";
+      overlay.querySelector(".speed-judgment-panel").classList.add(judgment.success ? "success" : "failure");
+      finished = true;
+      closeTimer = setTimeout(close, 1600);
+    }
+    rollFrame();
+  });
+}
+
+/** 简单二选一弹窗，返回选项 value；点击遮罩取消。 */
+function askSkillOption(title, message, options) {
   return new Promise(function(resolve) {
     var overlay = document.createElement("div");
-    overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:400;display:flex;flex-direction:column;align-items:center;justify-content:center";
+    overlay.className = "skill-option-overlay";
+    var buttons = options.map(function(option) {
+      return '<button type="button" class="skill-option-btn" data-value="' + option.value + '">' +
+        '<strong>' + option.label + '</strong><span>' + (option.description || "") + '</span></button>';
+    }).join("");
+    overlay.innerHTML = '<div class="skill-option-panel"><h3>' + title + '</h3><p>' + message +
+      '</p><div class="skill-option-list">' + buttons + '</div></div>';
+    overlay.querySelectorAll(".skill-option-btn").forEach(function(button) {
+      button.addEventListener("click", function(e) {
+        e.stopPropagation();
+        var value = button.getAttribute("data-value");
+        overlay.remove();
+        resolve(value);
+      });
+    });
+    overlay.addEventListener("click", function(e) {
+      if (e.target === overlay) { overlay.remove(); resolve(null); }
+    });
+    document.body.appendChild(overlay);
+  });
+}
+
+function rectPositions(row, col, height, width) {
+  var positions = [];
+  for (var r = row; r < row + height; r++) {
+    for (var c = col; c < col + width; c++) positions.push([r, c]);
+  }
+  return positions;
+}
+
+/**
+ * 生成逻辑 3×4 阵型中的合法矩形落点。画面虽已转置，data-row/data-col 仍保存逻辑坐标，
+ * 因而高亮后会自然呈现为玩家实际看到的横向或纵向范围。
+ */
+function getRectAreaCandidates(teamKey, caster, config) {
+  var height = config.height;
+  var width = config.width;
+  var candidates = [];
+  var living = aliveGenerals(teamKey);
+  for (var row = 0; row <= 3 - height; row++) {
+    for (var col = 0; col <= 4 - width; col++) {
+      var positions = rectPositions(row, col, height, width);
+      var containsCaster = caster && positions.some(function(pos) {
+        return pos[0] === caster.row && pos[1] === caster.col;
+      });
+      if (config.constraint === "contains_caster" && !containsCaster) continue;
+      if (config.constraint === "front_of_caster") {
+        var includesCasterLane = positions.some(function(pos) { return pos[1] === caster.col; });
+        var reachesFront = positions.some(function(pos) { return pos[0] < caster.row; });
+        if (!includesCasterLane || !reachesFront) continue;
+      }
+      var hasLivingTarget = living.some(function(general) {
+        return positions.some(function(pos) {
+          return pos[0] === general.row && pos[1] === general.col;
+        });
+      });
+      if (!hasLivingTarget) continue;
+      candidates.push({
+        r: row,
+        c: col,
+        height: height,
+        width: width,
+        orientation: config.orientation || null,
+        positions: positions
+      });
+    }
+  }
+  return candidates;
+}
+
+/** 在复制的战场中悬停预览并点击确定一个矩形技能范围。 */
+function selectRectAreaForSkill(config) {
+  return new Promise(function(resolve) {
+    var allyKey = currentTeamKey();
+    var teamKey = config.side === "ally" ? allyKey : (allyKey === "p1" ? "p2" : "p1");
+    var gridSelector = teamKey === "p1" ? "#bside1-grid" : "#bside2-grid";
+    var sourceGrid = document.querySelector(gridSelector);
+    if (!sourceGrid) { resolve(null); return; }
+
+    var candidates = getRectAreaCandidates(teamKey, selectedAttacker.general, config);
+    if (!candidates.length) {
+      setStatus("当前没有符合该技能规则的可选范围");
+      resolve(null);
+      return;
+    }
+
+    var overlay = document.createElement("div");
+    overlay.className = "skill-area-overlay";
+    var panel = document.createElement("div");
+    panel.className = "skill-area-panel";
+    panel.innerHTML = '<h3>' + config.title + '</h3><p>金色框为可选落点；悬停查看蓝色覆盖范围，点击确认</p>';
+
+    var gridClone = sourceGrid.cloneNode(true);
+    gridClone.removeAttribute("id");
+    gridClone.classList.add("skill-area-grid");
+    var cells = Array.prototype.slice.call(gridClone.querySelectorAll(".bcell"));
+    cells.forEach(function(cell) {
+      cell.classList.remove("selected", "range-attack", "range-skill", "range-vertical-column", "locked", "acted");
+      cell.removeAttribute("data-tooltip");
+      cell.onclick = null;
+    });
+
+    function cellAt(row, col) {
+      return cells.find(function(cell) {
+        return parseInt(cell.getAttribute("data-row")) === row &&
+          parseInt(cell.getAttribute("data-col")) === col;
+      });
+    }
+    var activeCandidate = null;
+    function preview(candidate) {
+      activeCandidate = candidate;
+      cells.forEach(function(cell) { cell.classList.remove("cast-area-preview"); });
+      candidate.positions.forEach(function(pos) {
+        var cell = cellAt(pos[0], pos[1]);
+        if (cell) cell.classList.add("cast-area-preview");
+      });
+    }
+
+    candidates.forEach(function(candidate) {
+      var anchor = cellAt(candidate.r, candidate.c);
+      if (!anchor) return;
+      anchor.classList.add("cast-area-anchor");
+      anchor.addEventListener("mouseenter", function() { preview(candidate); });
+      anchor.addEventListener("focus", function() { preview(candidate); });
+    });
+    cells.forEach(function(cell) {
+      cell.addEventListener("click", function(e) {
+        if (!activeCandidate || !cell.classList.contains("cast-area-preview")) return;
+        e.stopPropagation();
+        overlay.remove();
+        resolve(activeCandidate);
+      });
+    });
+    preview(candidates[0]);
+    panel.appendChild(gridClone);
+    overlay.appendChild(panel);
+    overlay.addEventListener("click", function(e) {
+      if (e.target === overlay) { overlay.remove(); resolve(null); }
+    });
+    document.body.appendChild(overlay);
+  });
+}
+
+/** 根据每项技能的真实规则收集落点、方向、模式等施放参数。 */
+async function chooseSkillCastOptions(general) {
+  var skillId = general.skill_id || "";
+  var area;
+  var choice;
+
+  if (skillId === "meteor_rite") {
+    var selectedRow = await selectVerticalColumnForSkill();
+    return selectedRow === null ? null : { skillRow:selectedRow };
+  }
+
+  if (["stone_sentinel_maze", "spear_wheel_tactics", "thunder_strike", "taunt"].indexOf(skillId) >= 0) {
+    area = await selectRectAreaForSkill({ side:"enemy", height:2, width:2, title:"选择敌方 2×2 技能范围" });
+    return area ? { area:area } : null;
+  }
+
+  if (skillId === "discord_strategy") {
+    area = await selectRectAreaForSkill({ side:"enemy", height:2, width:2, title:"离间谋略：选择敌方 2×2 范围" });
+    if (!area) return null;
+    choice = await askSkillOption("选择生效时机", "决定离间谋略何时削弱目标", [
+      { value:"ally_attack", label:"我方进攻", description:"立即生效" },
+      { value:"enemy_attack", label:"敌方进攻", description:"延迟至对方行动" }
+    ]);
+    return choice ? { area:area, timing:choice } : null;
+  }
+
+  if (skillId === "tooth_for_tooth") {
+    choice = await askSkillOption("以牙还牙", "先选择技能模式，再选择对应范围", [
+      { value:"wide", label:"2×2 广域", description:"范围内武力-3" },
+      { value:"focused", label:"相邻2格", description:"武力-3并附加攻速限制" }
+    ]);
+    if (!choice) return null;
+    if (choice === "wide") {
+      area = await selectRectAreaForSkill({ side:"enemy", height:2, width:2, title:"选择敌方 2×2 范围" });
+    } else {
+      var toothDirection = await askAdjacentDirection();
+      if (!toothDirection) return null;
+      area = await selectRectAreaForSkill({ side:"enemy", height:toothDirection.height, width:toothDirection.width,
+        orientation:toothDirection.orientation, title:"选择敌方相邻 2 格" });
+    }
+    return area ? { area:area, mode:choice } : null;
+  }
+
+  if (skillId === "small_chain_plot") {
+    var chainDirection = await askAdjacentDirection();
+    if (!chainDirection) return null;
+    area = await selectRectAreaForSkill({ side:"enemy", height:chainDirection.height, width:chainDirection.width,
+      orientation:chainDirection.orientation, title:"小连环计：选择敌方相邻 2 格" });
+    return area ? { area:area } : null;
+  }
+
+  if (skillId === "momentary_order") {
+    area = await selectRectAreaForSkill({ side:"ally", height:2, width:2, constraint:"contains_caster",
+      title:"刹那的号令：选择包含曹仁的 2×2 范围" });
+    return area ? { area:area } : null;
+  }
+
+  if (skillId === "meticulous_offense") {
+    area = await selectRectAreaForSkill({ side:"ally", height:2, width:2, constraint:"front_of_caster",
+      title:"缜密的攻势：选择前方 2×2 范围" });
+    return area ? { area:area } : null;
+  }
+
+  if (skillId === "jiangdong_beauty") {
+    area = await selectRectAreaForSkill({ side:"ally", height:3, width:3, constraint:"contains_caster",
+      title:"江东的大美人：选择包含大乔的 3×3 范围" });
+    return area ? { area:area } : null;
+  }
+
+  return {};
+}
+
+async function askAdjacentDirection() {
+  var direction = await askSkillOption("选择相邻方向", "范围由两个相邻格组成", [
+    { value:"visual_horizontal", label:"横向相邻", description:"画面中左右两个格子" },
+    { value:"visual_vertical", label:"纵向相邻", description:"画面中上下两个格子" }
+  ]);
+  if (direction === "visual_horizontal") {
+    // 画面已转置：视觉横向对应 logical row 方向。
+    return { height:2, width:1, orientation:"vertical" };
+  }
+  if (direction === "visual_vertical") {
+    return { height:1, width:2, orientation:"horizontal" };
+  }
+  return null;
+}
+
+/**
+ * 流星的仪式：选择敌方一条视觉竖列。
+ * 后端 logical row 对应转置布局中的视觉竖列，因此返回 0~2 的 logical row。
+ */
+function selectVerticalColumnForSkill() {
+  return new Promise(function(resolve) {
+    var overlay = document.createElement("div");
+    overlay.className = "skill-area-overlay";
 
     var enemyGrid = document.querySelector(G.current_team === "p1" ? "#bside2-grid" : "#bside1-grid");
     if (!enemyGrid) { resolve(null); return; }
 
-    // 拷贝敌方网格到弹窗中
     var gridClone = enemyGrid.cloneNode(true);
-    gridClone.style.margin = "0 auto";
-    gridClone.style.height = "auto";
-    gridClone.style.minHeight = "200px";
-    gridClone.style.position = "relative";
+    gridClone.removeAttribute("id");
+    gridClone.classList.add("skill-area-grid");
 
-    // 高亮所有可能的 2x2 区域起始角
-    var cells = gridClone.querySelectorAll(".bcell");
+    var cells = Array.prototype.slice.call(gridClone.querySelectorAll(".bcell"));
     cells.forEach(function(cell) {
-      var r = parseInt(cell.getAttribute("data-row"));
-      var c = parseInt(cell.getAttribute("data-col"));
-      if (!isNaN(r) && !isNaN(c) && r < 2 && c < 3) {
-        // 左上角可以是 (0,0), (0,1), (0,2), (1,0), (1,1), (1,2)
-        cell.style.outline = "3px solid var(--gold-bright)";
-        cell.style.cursor = "pointer";
-        cell.style.zIndex = "10";
-        cell.onclick = function(e) {
-          e.stopPropagation();
-          overlay.remove();
-          resolve({ r: r, c: c });
-        };
-        cell.setAttribute("data-tooltip", "点击选择 2×2 落雷区域起始位置");
-      }
+      cell.classList.remove("selected", "range-attack", "range-skill", "range-vertical-column", "locked", "acted");
+      cell.removeAttribute("data-tooltip");
     });
+    function highlightColumn(row) {
+      cells.forEach(function(cell) {
+        cell.classList.toggle("cast-area-preview", parseInt(cell.getAttribute("data-row")) === row);
+      });
+    }
+
+    cells.forEach(function(cell) {
+      var row = parseInt(cell.getAttribute("data-row"));
+      if (isNaN(row)) return;
+      cell.style.cursor = "pointer";
+      cell.onmouseenter = function() { highlightColumn(row); };
+      cell.onclick = function(e) {
+        e.stopPropagation();
+        overlay.remove();
+        resolve(row);
+      };
+      cell.setAttribute("data-tooltip", "点击选择这一整条竖列");
+    });
+    highlightColumn(0);
 
     var wrapper = document.createElement("div");
-    wrapper.style.cssText = "background:rgba(10,8,6,.95);border:2px solid var(--gold);border-radius:14px;padding:20px;text-align:center;max-width:90vw";
-    wrapper.innerHTML = '<div style="font-size:18px;color:var(--gold);margin-bottom:8px">⚡ 选择 2×2 落雷区域</div>' +
-      '<div style="font-size:12px;color:var(--muted);margin-bottom:12px">点击敌方阵型中的格子作为落雷区左上角</div>';
+    wrapper.className = "skill-area-panel";
+    wrapper.innerHTML = '<h3>流星的仪式：选择一条竖列</h3>' +
+      '<p>悬停可预览范围，点击敌方阵型中的任意格选择整列</p>';
     wrapper.appendChild(gridClone);
     overlay.appendChild(wrapper);
 
@@ -1162,14 +1659,20 @@ function animAttack(aEl, tEl, dmg) {
   if (window.gsap) {
     gsap.timeline()
       .to(aEl, { duration: 0.15, x: tCenter.x - aCenter.x, y: tCenter.y - aCenter.y, scale: 1.15, ease: "power2.in" })
-      .call(function() { FX.slashTrail(aCenter.x, aCenter.y, tCenter.x, tCenter.y); FX.screenShake(); spawnFloatNum(tEl, dmg || 3, "damage"); })
+      .call(function() {
+        FX.slashTrail(aCenter.x, aCenter.y, tCenter.x, tCenter.y);
+        FX.screenShake();
+        if (dmg > 0) spawnFloatNum(tEl, dmg, "damage");
+        else spawnSkillLabel(tEl, "格挡");
+      })
       .to(aEl, { duration: 0.2, x: 0, y: 0, scale: 1, ease: "power2.out" });
   } else {
     aEl.classList.add("attacking");
     setTimeout(function() { aEl.classList.remove("attacking"); }, 350);
     FX.slashTrail(aCenter.x, aCenter.y, tCenter.x, tCenter.y);
     FX.screenShake();
-    spawnFloatNum(tEl, dmg || 3, "damage");
+    if (dmg > 0) spawnFloatNum(tEl, dmg, "damage");
+    else spawnSkillLabel(tEl, "格挡");
   }
 }
 

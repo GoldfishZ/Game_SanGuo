@@ -85,6 +85,29 @@ def test_momentary_order_cannot_be_used_next_own_turn():
     assert cao_ren.can_use_active_skill()
 
 
+def test_momentary_order_respects_selected_2x2_containing_caster():
+    cao_ren = get_general_by_name("曹仁")
+    chosen_ally = make_ally("选区友军")
+    outside = make_ally("选区外友军")
+    team = Team("曹仁队")
+    enemy_team = Team("敌队")
+    for general in [cao_ren, chosen_ally, outside]:
+        team.add_general(general)
+    team.position_general(cao_ren, 1, 1)
+    team.position_general(chosen_ally, 0, 0)
+    team.position_general(outside, 2, 2)
+
+    result = team.use_skill(
+        cao_ren,
+        [{"row": 0, "col": 0}],
+        BattleContext(team, enemy_team),
+    )
+
+    assert result["block"] == [(0, 0), (0, 1), (1, 0), (1, 1)]
+    assert chosen_ally.get_effective_force() == 6
+    assert outside.get_effective_force() == 4
+
+
 if __name__ == "__main__":
     test_cao_ren_data_and_skill()
     test_momentary_order_buffs_best_2x2_block_including_self()

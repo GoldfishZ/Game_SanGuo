@@ -83,7 +83,7 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
   background:#1c1610;border:1px solid #281e14;cursor:pointer;font-size:clamp(11px,1.3vw,15px);transition:all .12s}
 .form-sidelist .gi:hover{border-color:var(--gold)}
 .form-sidelist .gi.active{background:#2d2218;border-color:var(--gold)}
-.form-grid{display:grid;grid-template-columns:repeat(4,1fr);grid-template-rows:repeat(3,1fr);gap:clamp(4px,.6vw,8px);flex:1}
+.form-grid{display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(4,1fr);gap:clamp(4px,.6vw,8px);flex:1}
 .form-cell{
   background:var(--panel);border:1px dashed var(--border);border-radius:6px;
   display:flex;align-items:center;justify-content:center;
@@ -93,12 +93,14 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
 .form-cell.filled{border-style:solid;border-color:#3a3020;color:var(--gold);font-size:clamp(13px,1.6vw,18px);font-weight:600}
 .form-cell.droptarget{border-color:var(--gold);background:#2d2218}
 
-/* Formation row labels */
-.form-grid-wrap{display:flex;flex:1;gap:0}
-.form-row-labels{display:flex;flex-direction:column;gap:clamp(4px,.6vw,8px);margin-right:8px;flex-shrink:0;width:clamp(60px,8vw,90px)}
+/* Formation depth labels: P1 faces right, P2 faces left. */
+.form-grid-wrap{display:flex;flex-direction:column;flex:1;gap:0}
+.form-row-labels{display:grid;grid-template-columns:repeat(3,1fr);gap:clamp(4px,.6vw,8px);margin-bottom:8px;flex-shrink:0;width:100%}
 .row-label{display:flex;flex-direction:column;align-items:center;justify-content:center;
-  font-size:clamp(10px,1.2vw,14px);font-weight:700;min-height:clamp(60px,12vh,100px);
-  border-radius:6px;background:var(--panel);border:1px solid var(--border);padding:4px}
+  font-size:clamp(10px,1.2vw,14px);font-weight:700;min-height:clamp(34px,6vh,48px);
+  grid-row:1;border-radius:6px;background:var(--panel);border:1px solid var(--border);padding:4px}
+.form-grid-wrap.p1 .row-label.front{grid-column:3}.form-grid-wrap.p1 .row-label.mid{grid-column:2}.form-grid-wrap.p1 .row-label.back{grid-column:1}
+.form-grid-wrap.p2 .row-label.front{grid-column:1}.form-grid-wrap.p2 .row-label.mid{grid-column:2}.form-grid-wrap.p2 .row-label.back{grid-column:3}
 .row-label.front{border-color:#c04840;color:#c04840}.row-label.mid{border-color:#c9a84c;color:#c9a84c}.row-label.back{border-color:var(--shu);color:#60a878}
 .row-label .row-hint{font-size:clamp(7px,.8vw,9px);font-weight:400;opacity:.7;margin-top:2px}
 
@@ -106,10 +108,14 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
 #scr-battle{background:linear-gradient(180deg,
   rgba(15,10,5,.95) 0%,rgba(20,14,8,.9) 30%,rgba(25,16,8,.85) 50%,
   rgba(25,16,8,.85) 50%,rgba(20,14,8,.9) 70%,rgba(15,10,5,.95) 100%)}
+#scr-battle.screen.active{
+  height:100vh;height:100dvh;min-height:0;overflow:hidden;flex:none;
+  padding:clamp(5px,1vh,12px) clamp(8px,2vw,28px)
+}
 .battle{display:flex;flex-direction:column;gap:0;margin:0;flex:1;min-height:0}
 
 /* 阵营面板 */
-.bside{min-width:0;display:flex;flex-direction:column;flex:1;
+.bside{min-width:0;min-height:0;display:flex;flex-direction:column;flex:1 1 0;
   background:linear-gradient(180deg,rgba(20,14,8,.85),rgba(12,8,4,.9));
   border:1px solid rgba(180,140,60,.25);border-radius:8px;
   padding:0;position:relative;overflow:hidden}
@@ -131,8 +137,8 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
 
 /* 双方网格 */
 /* 双方网格容器 */
-.bside-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));grid-template-rows:repeat(3,minmax(0,1fr));
-  gap:clamp(2px,.4vw,5px);flex:1;min-height:0;height:clamp(120px,20vh,220px);padding:clamp(4px,.8vw,8px);position:relative;z-index:2}
+.bside-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));grid-template-rows:repeat(4,minmax(0,1fr));
+  gap:clamp(2px,.4vw,5px);flex:1 1 0;min-height:0;height:auto;padding:clamp(3px,.7vh,7px);position:relative;z-index:2}
 /* ---- 战场中线 ---- */
 .battlefield-divider{display:flex;align-items:center;gap:0;padding:2px 0;position:relative;z-index:5}
 .battlefield-divider::before{content:"";position:absolute;inset:-4px 0;
@@ -158,10 +164,36 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
 .bcell{background:linear-gradient(180deg,rgba(30,22,14,.95),rgba(18,12,6,.98));
   border:2px solid #3a2c18;border-radius:6px;
   padding:clamp(2px,.3vw,5px);min-width:0;min-height:0;position:relative;overflow:hidden;
+  height:100%;width:auto;max-width:100%;aspect-ratio:2/3;justify-self:center;align-self:center;
   cursor:pointer;transition:all .12s;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;
   box-shadow:inset 0 1px 0 rgba(255,255,255,.03),0 2px 6px rgba(0,0,0,.4)}
 .bcell:hover{border-color:var(--gold);box-shadow:0 0 10px rgba(190,150,60,.25),inset 0 1px 0 rgba(255,255,255,.04)}
-.bcell.selected{border:2px solid var(--gold);box-shadow:0 0 16px rgba(228,192,96,.4),inset 0 0 20px rgba(255,200,80,.08)}
+.bcell.selected{
+  z-index:40;opacity:1!important;filter:none!important;border:2px solid var(--gold-bright);
+  box-shadow:0 12px 30px rgba(0,0,0,.8),0 0 24px rgba(228,192,96,.85),inset 0 0 20px rgba(255,200,80,.12);
+  animation:selectedCardFloat 1.8s ease-in-out infinite
+}
+@keyframes selectedCardFloat{
+  0%,100%{transform:translateY(-5px) scale(1.10)}
+  50%{transform:translateY(-10px) scale(1.15)}
+}
+.bside.selection-active{overflow:visible;z-index:15}
+.bcell.range-attack{outline:3px solid #f06440;outline-offset:-3px}
+.bcell.range-skill{outline:3px solid #58bfe8;outline-offset:-3px}
+.bcell.range-skill::before{
+  content:"";position:absolute;inset:0;z-index:8;pointer-events:none;
+  background:rgba(38,148,205,.18);box-shadow:inset 0 0 18px rgba(88,191,232,.48)
+}
+.bcell.range-vertical-column::before{
+  background:linear-gradient(90deg,rgba(42,156,212,.24),rgba(112,218,255,.34),rgba(42,156,212,.24));
+  box-shadow:inset 0 0 0 2px rgba(112,218,255,.68),inset 0 0 22px rgba(88,191,232,.62)
+}
+.bcell.range-attack.range-skill{outline-color:var(--gold-bright);outline-width:4px}
+.bcell.range-attack.range-skill::before{background:rgba(228,192,96,.22);box-shadow:inset 0 0 18px rgba(228,192,96,.55)}
+.bcell.range-attack:not(.selected){animation:attackRangePulse 1.35s ease-in-out infinite}
+.bcell.range-skill:not(.range-attack):not(.selected){animation:skillRangePulse 1.55s ease-in-out infinite}
+@keyframes attackRangePulse{0%,100%{outline-color:#b84028}50%{outline-color:#ff8a62}}
+@keyframes skillRangePulse{0%,100%{outline-color:#287da8}50%{outline-color:#78d8ff}}
 .bcell.locked{cursor:default;opacity:.85}
 .bcell .cname{font-size:clamp(9px,1.1vw,13px);color:var(--text);text-align:center;margin-top:2px;line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .bcell .chp{font-size:clamp(8px,1vw,11px);color:var(--muted);text-align:center;line-height:1.1}
@@ -265,6 +297,52 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
 .dice.p1{color:#c07070}.dice.p2{color:#4a6fa5}
 .dice-label{font-size:14px;color:var(--muted);margin-top:4px}
 
+/* 攻速判定：服务器先结算真实骰点，前端再播放掷骰与结果。 */
+.speed-judgment-overlay{position:fixed;inset:0;z-index:520;display:flex;align-items:center;justify-content:center;
+  background:rgba(2,4,8,.84);backdrop-filter:blur(4px)}
+.speed-judgment-panel{width:min(360px,88vw);padding:24px 28px;text-align:center;border-radius:16px;
+  color:var(--text);background:linear-gradient(180deg,#181a20,#090b10);border:2px solid #627080;
+  box-shadow:0 22px 70px rgba(0,0,0,.75),inset 0 0 30px rgba(120,160,200,.06)}
+.speed-judgment-panel.success{border-color:#59c77a;box-shadow:0 0 34px rgba(70,210,110,.28),0 22px 70px rgba(0,0,0,.75)}
+.speed-judgment-panel.failure{border-color:#d65c52;box-shadow:0 0 34px rgba(220,70,60,.25),0 22px 70px rgba(0,0,0,.75)}
+.speed-title{font-size:22px;font-weight:800;letter-spacing:.12em;color:var(--gold-bright)}
+.speed-choice{margin-top:7px;font-size:13px;color:var(--muted)}
+.speed-choice strong{color:#fff;font-size:18px;margin-left:4px}
+.speed-die{height:108px;margin:12px 0 2px;font-size:92px;line-height:108px;color:#eef6ff;
+  text-shadow:0 0 22px rgba(120,200,255,.65);transition:transform .08s ease-out}
+.speed-die.rolling{animation:speedDieHop .38s ease-in-out infinite alternate}
+@keyframes speedDieHop{from{filter:blur(0);margin-top:12px;margin-bottom:2px}to{filter:blur(1px);margin-top:3px;margin-bottom:11px}}
+.speed-points{min-height:24px;font-size:17px;color:#c6d3df}
+.speed-result{margin-top:7px;font-size:25px;font-weight:900;letter-spacing:.08em}
+.speed-result.success{color:#72e89a}.speed-result.failure{color:#ff756b}
+.speed-message{min-height:22px;margin-top:5px;font-size:14px;color:#d7cdbd}
+.speed-continue{margin-top:13px;font-size:10px;color:#66717d}
+
+/* 技能范围选择器：在复制的真实战场上预览并确认落点。 */
+.skill-area-overlay,.skill-option-overlay{position:fixed;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;
+  padding:20px;background:rgba(0,0,0,.82);backdrop-filter:blur(4px)}
+.skill-area-panel,.skill-option-panel{max-width:94vw;max-height:94vh;overflow:auto;padding:18px 20px;border-radius:14px;
+  text-align:center;color:var(--text);background:linear-gradient(180deg,#17130e,#090806);border:2px solid var(--gold);
+  box-shadow:0 24px 70px rgba(0,0,0,.8)}
+.skill-area-panel h3,.skill-option-panel h3{margin:0 0 6px;color:var(--gold-bright);font-size:19px}
+.skill-area-panel p,.skill-option-panel p{margin:0 0 13px;color:var(--muted);font-size:12px}
+.skill-area-grid{width:min(560px,82vw)!important;height:min(60vh,500px)!important;min-height:260px!important;
+  margin:0 auto;flex:none!important;padding:7px;border-radius:9px;background:rgba(5,8,12,.82)}
+.skill-area-grid .bcell{cursor:default;opacity:.74;filter:saturate(.7);transition:opacity .15s,filter .15s,outline-color .15s}
+.skill-area-grid .bcell.cast-area-anchor{cursor:pointer;outline:3px solid var(--gold-bright);outline-offset:-3px;opacity:1}
+.skill-area-grid .bcell.cast-area-anchor:hover{box-shadow:0 0 18px rgba(228,192,96,.7)}
+.skill-area-grid .bcell.cast-area-preview{cursor:pointer;opacity:1;filter:none;outline:3px solid #65d4ff;outline-offset:-3px}
+.skill-area-grid .bcell.cast-area-preview::before{content:"";position:absolute;inset:0;z-index:12;pointer-events:none;
+  background:rgba(54,173,224,.28);box-shadow:inset 0 0 22px rgba(101,212,255,.62)}
+.skill-area-grid .bcell-tip{display:none!important}
+.skill-option-panel{width:min(440px,90vw)}
+.skill-option-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.skill-option-btn{display:flex;flex-direction:column;gap:4px;align-items:center;padding:14px 12px;border-radius:9px;
+  cursor:pointer;color:var(--text);background:#1d1812;border:1px solid #57452a;font:inherit;transition:.15s}
+.skill-option-btn:hover{transform:translateY(-2px);border-color:var(--gold-bright);background:#2a2117}
+.skill-option-btn strong{font-size:15px;color:var(--gold-bright)}
+.skill-option-btn span{font-size:11px;color:var(--muted)}
+
 /* ===== Overlay / Preview ===== */
 .overlay{
   position:fixed;top:0;left:0;right:0;bottom:0;
@@ -294,10 +372,60 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
 .phase-tag.ph-attack{background:rgba(220,120,60,.2);color:#f09050;border:1px solid rgba(220,120,60,.4)}
 .phase-tag.ph-target{background:rgba(220,80,80,.2);color:#f06060;border:1px solid rgba(220,80,80,.4);animation:pulseGuide 1.5s ease-in-out infinite}
 @keyframes pulseGuide{0%,100%{box-shadow:0 0 4px rgba(220,80,80,.3)}50%{box-shadow:0 0 16px rgba(220,80,80,.6)}}
+.battle-range-legend{display:none;align-items:center;gap:5px;flex-wrap:wrap}
+.range-key{display:inline-flex;align-items:center;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;line-height:1.3;white-space:nowrap}
+.range-key.attack{color:#ff9b79;background:rgba(190,64,40,.2);border:1px solid rgba(240,100,64,.65)}
+.range-key.skill{color:#8edfff;background:rgba(50,130,180,.2);border:1px solid rgba(88,191,232,.65)}
 
 /* Tutorial overlay elements */
 #tutorial-bubble{transition:all .35s cubic-bezier(.34,1.56,.64,1)}
 #tutorial-highlight{transition:all .35s cubic-bezier(.34,1.56,.64,1)}
+
+/* Battle is a single-screen workspace: chrome stays compact, boards take the remainder. */
+#scr-battle .battle-top-bar{flex:0 0 auto;margin:0 0 clamp(2px,.7vh,7px);min-height:0}
+#scr-battle .status{flex:0 0 auto;padding:clamp(3px,.7vh,7px);margin:clamp(2px,.5vh,5px) 0;line-height:1.2}
+#scr-battle .toolbar{flex:0 0 auto;margin:0;gap:clamp(3px,.7vh,7px)}
+#scr-battle .toolbar .btn{padding:clamp(5px,.9vh,9px) clamp(12px,2vw,26px);font-size:clamp(11px,1.7vh,15px);margin:2px}
+
+@media(max-height:700px){
+  #scr-battle .bside-header{padding:3px 9px}
+  #scr-battle .bside-banner{font-size:14px}
+  #scr-battle .bside-name{font-size:12px}
+  #scr-battle .battlefield-divider{padding:0}
+  #scr-battle .bf-clash{font-size:18px;padding:0 8px}
+  #scr-battle .battle-top-bar .btn{padding:2px 8px!important;margin:0}
+  #scr-battle .bcell .cname{font-size:clamp(8px,1.5vh,11px);margin-top:1px}
+  #scr-battle .bcell .chp{font-size:clamp(7px,1.3vh,9px)}
+  #scr-battle .bcell img{height:calc(100% - 24px)}
+}
+
+/* Desktop battle: side-by-side armies give every 4×3 slot a portrait-card ratio. */
+@media(min-width:900px){
+  #scr-battle.screen.active{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) clamp(24px,3vw,44px) minmax(0,1fr);
+    grid-template-rows:auto minmax(0,1fr) auto auto;
+    column-gap:clamp(5px,1vw,12px);
+    row-gap:0
+  }
+  #scr-battle .battle-top-bar{grid-column:1/-1;grid-row:1}
+  #scr-battle #bside1{grid-column:1;grid-row:2}
+  #scr-battle #bside2{grid-column:3;grid-row:2}
+  #scr-battle .battlefield-divider{
+    grid-column:2;grid-row:2;min-width:0;min-height:0;
+    flex-direction:column;padding:0 2px
+  }
+  #scr-battle .battlefield-divider::before{inset:0 -4px}
+  #scr-battle .battlefield-divider::after{inset:0 -8px}
+  #scr-battle .bf-line{
+    width:2px;height:auto;min-height:0;
+    background:linear-gradient(180deg,transparent,rgba(200,80,40,.6) 20%,rgba(200,80,40,.8) 50%,rgba(200,80,40,.6) 80%,transparent)
+  }
+  #scr-battle .bf-clash{padding:8px 0}
+  #scr-battle #battle-status{grid-column:1/-1;grid-row:3}
+  #scr-battle #battle-actions{grid-column:1/-1;grid-row:4}
+  #scr-battle .bcell img{width:100%;height:calc(100% - 30px);object-fit:contain}
+}
 
 /* Responsive tweaks for very narrow screens */
 @media(max-width:700px){
@@ -345,9 +473,9 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
 .card-wu .badge{background:var(--wu)}.card-liang .badge{background:var(--liang)}
 .card-yuan .badge{background:var(--yuan)}.card-ta .badge{background:var(--ta)}
 
-/* 战线指示：P1前排(视觉底部)下红线，P2前排(视觉顶部)上红线 */
-#bside1-grid .bcell[data-row="0"]{border-bottom:3px solid #8a4a3a}
-#bside2-grid .bcell[data-row="0"]{border-top:3px solid #8a4a3a}
+/* 战线指示：双方前卫列朝向中央，P1在右、P2在左。 */
+#bside1-grid .bcell[data-row="0"]{border-right:3px solid #8a4a3a}
+#bside2-grid .bcell[data-row="0"]{border-left:3px solid #8a4a3a}
 .bcell[data-row="2"]{background:linear-gradient(180deg,rgba(20,18,12,.95),rgba(14,12,8,.97))}
 
 /* ---- Pulsing guide for next action ---- */

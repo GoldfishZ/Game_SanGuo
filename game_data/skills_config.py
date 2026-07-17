@@ -7,14 +7,46 @@ from src.models.general import odd_even_judgment
 from src.skills.skill_base import DamageSkill, EnhanceWeakenSkill, Skill, SkillType, TargetType
 
 
+def _selection_options(targets, battle_context):
+    """读取 Web/测试传入的范围起点等技能选项。"""
+    options = {}
+    context_options = getattr(battle_context, "skill_options", None)
+    if isinstance(context_options, dict):
+        options.update(context_options)
+    if targets and isinstance(targets[0], dict):
+        options.update(targets[0])
+    return options
+
+
+def _selected_rectangle(team, options, height, width):
+    """按玩家给出的逻辑坐标读取矩形范围；未提供选区时返回 None。"""
+    row = options.get("row")
+    col = options.get("col")
+    if row is None or col is None:
+        return None
+    row = max(0, min(3 - height, int(row)))
+    col = max(0, min(4 - width, int(col)))
+    positions = [
+        (r, c)
+        for r in range(row, row + height)
+        for c in range(col, col + width)
+    ]
+    generals = [
+        team.formation[r][c]
+        for r, c in positions
+        if team.formation[r][c] is not None and team.formation[r][c].is_alive
+    ]
+    return positions, generals
+
+
 class SiegeRowSkill(Skill):
-    """全军攻城：强化曹操所在行的己方武将。"""
+    """全军攻城：强化曹操所在竖列的己方武将。"""
 
     def __init__(self):
         super().__init__(
             skill_id="siege_all_army",
             name="全军攻城",
-            description="我方与曹操同一排的武将武力+3，本回合普攻无视栅栏防御，但只能攻击正前方武将",
+            description="我方与曹操同一竖列的武将武力+3，本回合普攻无视栅栏防御，但只能攻击正前方武将",
             skill_type=SkillType.ENHANCE_WEAKEN,
             target_type=TargetType.SELF,
             cooldown=0,
@@ -72,7 +104,7 @@ class StoneSentinelMazeSkill(Skill):
         super().__init__(
             skill_id="stone_sentinel_maze",
             name="石兵八阵",
-            description="一回合内任意排列敌方2x2方格内的武将，回合结束后返回原位",
+            description="选择敌方2x2方格并在一回合内重排其中武将，回合结束后返回原位",
             skill_type=SkillType.ENHANCE_WEAKEN,
             target_type=TargetType.SELF,
             cooldown=0,
@@ -94,7 +126,10 @@ class StoneSentinelMazeSkill(Skill):
             if caster_team == battle_context.team1
             else battle_context.team1
         )
-        result = enemy_team.apply_temporary_2x2_rearrangement()
+        options = _selection_options(targets, battle_context)
+        result = enemy_team.apply_temporary_2x2_rearrangement(
+            options.get("row"), options.get("col")
+        )
         if not result.get("success"):
             return {
                 "success": False,
@@ -163,7 +198,7 @@ class SpearWheelTacticsSkill(Skill):
         super().__init__(
             skill_id="spear_wheel_tactics",
             name="轮枪战术",
-            description="对敌方2x2方格内武力最低者计算伤害，伤害由方格内所有武将平摊",
+            description="选择敌方2x2方格，以其中武力最低者计算伤害并由范围内所有武将平摊",
             skill_type=SkillType.DAMAGE,
             target_type=TargetType.AREA_ENEMY,
             cooldown=0,
@@ -185,7 +220,12 @@ class SpearWheelTacticsSkill(Skill):
             if caster_team == battle_context.team1
             else battle_context.team1
         )
-        block_positions, block_generals = self._select_target_block(enemy_team)
+        options = _selection_options(targets, battle_context)
+        selected = _selected_rectangle(enemy_team, options, 2, 2)
+        if selected is not None:
+            block_positions, block_generals = selected
+        else:
+            block_positions, block_generals = self._select_target_block(enemy_team)
         if not block_generals:
             return {
                 "success": False,
@@ -409,13 +449,13 @@ class DivineSpeedTacticsSkill(Skill):
 
 
 class GrandCavalryOrderSkill(Skill):
-    """人马大号令：强化董卓所在横排的己方武将。"""
+    """人马大号令：强化董卓所在竖列的己方武将。"""
 
     def __init__(self):
         super().__init__(
             skill_id="grand_cavalry_order",
             name="人马大号令",
-            description="我方一横排武将武力+4，并获得一次攻速判定",
+            description="我方与董卓同一竖列的武将武力+4，并获得一次攻速判定",
             skill_type=SkillType.ENHANCE_WEAKEN,
             target_type=TargetType.AREA_ALLY,
             cooldown=0,
@@ -466,13 +506,13 @@ class GrandCavalryOrderSkill(Skill):
 
 
 class BanditSuppressionOrderSkill(Skill):
-    """贼军讨伐令：按对面同排敌军数量强化己方横排。"""
+    """贼军讨伐令：按敌方同一竖列人数强化己方竖列。"""
 
     def __init__(self):
         super().__init__(
             skill_id="bandit_suppression_order",
             name="贼军讨伐令",
-            description="自身所在横排友军武力上升，上升点数等于敌方同排存活武将数量",
+            description="自身所在竖列友军武力上升，上升点数等于敌方同一竖列存活武将数量",
             skill_type=SkillType.ENHANCE_WEAKEN,
             target_type=TargetType.AREA_ALLY,
             cooldown=0,
@@ -516,7 +556,7 @@ class BanditSuppressionOrderSkill(Skill):
             return {
                 "success": False,
                 "type": "enhance_weaken",
-                "message": "我方横排没有可被讨伐令强化的存活武将",
+                "message": "我方竖列没有可被讨伐令强化的存活武将",
                 "details": [],
             }
 
@@ -541,13 +581,13 @@ class BanditSuppressionOrderSkill(Skill):
 
 
 class WhiteHorseFormationSkill(Skill):
-    """白马阵：公孙瓒所在横排友军获得攻速判定。"""
+    """白马阵：公孙瓒所在竖列友军获得攻速判定。"""
 
     def __init__(self):
         super().__init__(
             skill_id="white_horse_formation",
             name="白马阵",
-            description="自身所在横排的我方武将获得一次攻速判定",
+            description="自身所在竖列的我方武将获得一次攻速判定",
             skill_type=SkillType.ENHANCE_WEAKEN,
             target_type=TargetType.AREA_ALLY,
             cooldown=0,
@@ -581,7 +621,7 @@ class WhiteHorseFormationSkill(Skill):
             return {
                 "success": False,
                 "type": "enhance_weaken",
-                "message": "我方横排没有可进入白马阵的存活武将",
+                "message": "我方竖列没有可进入白马阵的存活武将",
                 "details": [],
             }
 
@@ -923,7 +963,7 @@ class MomentaryOrderSkill(Skill):
         super().__init__(
             skill_id="momentary_order",
             name="刹那的号令",
-            description="包括自己在内2x2范围内的我方武将武力+2，下回合无法使用",
+            description="选择一个包含自己的2x2范围，其中我方武将武力+2，下回合无法使用",
             skill_type=SkillType.ENHANCE_WEAKEN,
             target_type=TargetType.AREA_ALLY,
             cooldown=2,
@@ -942,7 +982,9 @@ class MomentaryOrderSkill(Skill):
                 "details": [],
             }
 
-        affected_generals, block_positions = self._get_affected_generals(caster, team)
+        affected_generals, block_positions = self._get_affected_generals(
+            caster, team, targets, battle_context
+        )
         details = []
         for general in affected_generals:
             general.add_buff("force_boost", self.force_boost, self.duration)
@@ -960,7 +1002,7 @@ class MomentaryOrderSkill(Skill):
             "details": details,
         }
 
-    def _get_affected_generals(self, caster, team):
+    def _get_affected_generals(self, caster, team, targets=None, battle_context=None):
         caster_position = team.get_general_position(caster)
         if caster_position is None:
             return ([caster] if caster.is_alive else []), []
@@ -983,6 +1025,14 @@ class MomentaryOrderSkill(Skill):
                 ]
                 candidate_blocks.append((positions, generals))
 
+        selected = _selected_rectangle(
+            team, _selection_options(targets, battle_context), 2, 2
+        )
+        if selected is not None:
+            selected_positions, selected_generals = selected
+            if caster_position in selected_positions:
+                return selected_generals, selected_positions
+
         best_positions, best_generals = max(
             candidate_blocks,
             key=lambda item: (len(item[1]), -item[0][0][0], -item[0][0][1]),
@@ -997,7 +1047,7 @@ class MeticulousOffenseSkill(Skill):
         super().__init__(
             skill_id="meticulous_offense",
             name="缜密的攻势",
-            description="前方2x2方格的我方武将武力+3；下回合士气+3，若受益武将阵亡则不加士气",
+            description="选择前方2x2方格，其中我方武将武力+3；下回合士气+3，若受益武将阵亡则不加士气",
             skill_type=SkillType.ENHANCE_WEAKEN,
             target_type=TargetType.AREA_ALLY,
             cooldown=0,
@@ -1017,7 +1067,9 @@ class MeticulousOffenseSkill(Skill):
                 "details": [],
             }
 
-        affected_generals, block_positions = self._get_affected_generals(caster, team)
+        affected_generals, block_positions = self._get_affected_generals(
+            caster, team, targets, battle_context
+        )
         if not affected_generals:
             return {
                 "success": False,
@@ -1050,7 +1102,7 @@ class MeticulousOffenseSkill(Skill):
             "details": details,
         }
 
-    def _get_affected_generals(self, caster, team):
+    def _get_affected_generals(self, caster, team, targets=None, battle_context=None):
         caster_position = team.get_general_position(caster)
         if caster_position is None:
             return ([caster] if caster.is_alive else []), []
@@ -1088,6 +1140,15 @@ class MeticulousOffenseSkill(Skill):
         if not candidate_blocks:
             return ([caster] if caster.is_alive else []), [caster_position]
 
+        selected = _selected_rectangle(
+            team, _selection_options(targets, battle_context), 2, 2
+        )
+        if selected is not None:
+            selected_positions, selected_generals = selected
+            for candidate_positions, _ in candidate_blocks:
+                if candidate_positions == selected_positions:
+                    return selected_generals, selected_positions
+
         best_positions, best_generals = max(
             candidate_blocks,
             key=lambda item: (
@@ -1106,7 +1167,7 @@ class ThunderStrikeSkill(Skill):
         super().__init__(
             skill_id="thunder_strike",
             name="雷击",
-            description="敌方2x2方格内打下两道闪电；目标猜错奇偶则受到2倍智力差伤害",
+            description="选择敌方2x2方格并打下两道闪电；目标猜错奇偶则受到2倍智力差伤害",
             skill_type=SkillType.DAMAGE,
             target_type=TargetType.AREA_ENEMY,
             cooldown=0,
@@ -1129,8 +1190,13 @@ class ThunderStrikeSkill(Skill):
             if caster_team == battle_context.team1
             else battle_context.team1
         )
-        # 如果前端传入了已选区域目标，直接使用；否则自动选择最佳2x2块
-        if targets and len(targets) > 0 and all(hasattr(t, 'is_alive') for t in targets):
+        # Web 端优先传入范围起点；兼容旧调用直接传入目标武将列表。
+        selected = _selected_rectangle(
+            enemy_team, _selection_options(targets, battle_context), 2, 2
+        )
+        if selected is not None:
+            block_positions, block_generals = selected
+        elif targets and len(targets) > 0 and all(hasattr(t, 'is_alive') for t in targets):
             block_generals = [t for t in targets if t.is_alive and t._team == enemy_team]
             block_positions = [(0, 0)]  # 前端传入时不需要block info
         else:
@@ -1219,7 +1285,7 @@ class JiangdongBeautySkill(Skill):
         super().__init__(
             skill_id="jiangdong_beauty",
             name="江东的大美人",
-            description="清除自身所在3x3方格内友军减益；若无减益则回复1点生命，满血则生命上限+1",
+            description="选择一个包含自身的3x3方格，清除友军减益；无减益则回复1点生命，满血则生命上限+1",
             skill_type=SkillType.ENHANCE_WEAKEN,
             target_type=TargetType.AREA_ALLY,
             cooldown=0,
@@ -1236,7 +1302,9 @@ class JiangdongBeautySkill(Skill):
                 "details": [],
             }
 
-        affected_generals = self._get_affected_generals(caster, team)
+        affected_generals = self._get_affected_generals(
+            caster, team, targets, battle_context
+        )
         details = []
 
         for general in affected_generals:
@@ -1277,10 +1345,16 @@ class JiangdongBeautySkill(Skill):
             "details": details,
         }
 
-    def _get_affected_generals(self, caster, team):
+    def _get_affected_generals(self, caster, team, targets=None, battle_context=None):
         caster_position = team.get_general_position(caster)
         if caster_position is None:
             return [caster] if caster.is_alive else []
+
+        selected = _selected_rectangle(
+            team, _selection_options(targets, battle_context), 3, 3
+        )
+        if selected is not None and caster_position in selected[0]:
+            return selected[1]
 
         center_row, center_col = caster_position
         affected = []
@@ -1374,13 +1448,13 @@ class FlawlessSkill(Skill):
 
 
 class MasterTeachingSkill(Skill):
-    """夫子的教诲：提升司马徽所在横排友军智力。"""
+    """夫子的教诲：提升司马徽所在竖列友军智力。"""
 
     def __init__(self):
         super().__init__(
             skill_id="master_teaching",
             name="夫子的教诲",
-            description="使自身所在横排的我方武将智力+2，持续1回合",
+            description="使自身所在竖列的我方武将智力+2，持续1回合",
             skill_type=SkillType.ENHANCE_WEAKEN,
             target_type=TargetType.AREA_ALLY,
             cooldown=0,
@@ -1980,13 +2054,13 @@ class CorruptDanceSkill(Skill):
 
 
 class MeteorRiteSkill(Skill):
-    """流星的仪式：小乔对敌方一横排造成固定伤害。"""
+    """流星的仪式：小乔对敌方一竖列造成固定伤害。"""
 
     def __init__(self):
         super().__init__(
             skill_id="meteor_rite",
             name="流星的仪式",
-            description="对敌方一横排存活武将直接造成2点伤害",
+            description="对敌方一竖列存活武将直接造成2点伤害",
             skill_type=SkillType.DAMAGE,
             target_type=TargetType.AREA_ENEMY,
             cooldown=0,
@@ -2020,7 +2094,7 @@ class MeteorRiteSkill(Skill):
             return {
                 "success": False,
                 "type": "damage",
-                "message": "目标横排没有可受到流星的仪式伤害的武将",
+                "message": "目标竖列没有可受到流星的仪式伤害的武将",
                 "row": row,
                 "details": [],
             }
