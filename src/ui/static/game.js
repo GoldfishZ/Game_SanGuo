@@ -28,6 +28,130 @@ var battlePhase = "select";         // "select" | "action" | "target"
 var selectedAttacker = null;        // 战斗中选中的己方武将 {general, row, col}
 var galleryIdx = 0;
 var galleryFiltered = [];
+var _lastTurnSignature = "";
+
+/**
+ * 轻量战场声音：全部由 Web Audio 实时合成，不加载外部音频文件。
+ * 浏览器要求用户首次交互后才能启动 AudioContext，因此所有播放入口都可安全懒初始化。
+ */
+var BattleAudio = (function() {
+  var ctx = null;
+  var master = null;
+  var ambience = [];
+  var muted = false;
+  try { muted = localStorage.getItem("sanguo-muted") === "1"; } catch (e) {}
+
+  function syncButton() {
+    var button = document.getElementById("sound-toggle");
+    if (!button) return;
+    button.textContent = muted ? "声音 关" : "声音 开";
+    button.classList.toggle("muted", muted);
+    button.setAttribute("aria-pressed", muted ? "true" : "false");
+  }
+
+  function ensure() {
+    if (window.__stressMode || muted) { syncButton(); return null; }
+    if (!ctx) {
+      var AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return null;
+      ctx = new AudioContext();
+      master = ctx.createGain();
+      master.gain.value = 0.38;
+      master.connect(ctx.destination);
+      startAmbience();
+    }
+    if (ctx.state === "suspended") ctx.resume();
+    return ctx;
+  }
+
+  function tone(freq, duration, options) {
+    var audio = ensure();
+    if (!audio) return;
+    options = options || {};
+    var now = audio.currentTime + (options.delay || 0);
+    var osc = audio.createOscillator();
+    var gain = audio.createGain();
+    osc.type = options.type || "sine";
+    osc.frequency.setValueAtTime(freq, now);
+    if (options.to) osc.frequency.exponentialRampToValueAtTime(Math.max(20, options.to), now + duration);
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(options.volume || 0.08, now + Math.min(0.025, duration / 3));
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + duration);
+    osc.connect(gain); gain.connect(master);
+    osc.start(now); osc.stop(now + duration + 0.03);
+  }
+
+  function noise(duration, volume, cutoff) {
+    var audio = ensure();
+    if (!audio) return;
+    var frames = Math.max(1, Math.floor(audio.sampleRate * duration));
+    var buffer = audio.createBuffer(1, frames, audio.sampleRate);
+    var data = buffer.getChannelData(0);
+    for (var i = 0; i < frames; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / frames);
+    var source = audio.createBufferSource();
+    var filter = audio.createBiquadFilter();
+    var gain = audio.createGain();
+    filter.type = "lowpass"; filter.frequency.value = cutoff || 900;
+    gain.gain.setValueAtTime(volume || 0.05, audio.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audio.currentTime + duration);
+    source.buffer = buffer; source.connect(filter); filter.connect(gain); gain.connect(master);
+    source.start();
+  }
+
+  function startAmbience() {
+    if (!ctx || ambience.length || muted || window.__stressMode) return;
+    [55, 82.4].forEach(function(freq, index) {
+      var osc = ctx.createOscillator();
+      var filter = ctx.createBiquadFilter();
+      var gain = ctx.createGain();
+      osc.type = index ? "triangle" : "sine";
+      osc.frequency.value = freq;
+      filter.type = "lowpass"; filter.frequency.value = 180;
+      gain.gain.value = index ? 0.012 : 0.018;
+      osc.connect(filter); filter.connect(gain); gain.connect(master); osc.start();
+      ambience.push(osc, gain);
+    });
+  }
+
+  function stopAmbience() {
+    ambience.forEach(function(node) { try { if (node.stop) node.stop(); else node.disconnect(); } catch (e) {} });
+    ambience = [];
+  }
+
+  function play(name) {
+    if (window.__stressMode || muted) return;
+    switch (name) {
+      case "select": tone(210, .08, {to:270, volume:.045, type:"triangle"}); break;
+      case "anticipate": tone(92, .18, {to:68, volume:.06, type:"triangle"}); break;
+      case "impact": noise(.12, .13, 720); tone(74, .16, {to:45, volume:.1, type:"square"}); break;
+      case "block": tone(520, .12, {to:290, volume:.05, type:"square"}); tone(760, .08, {volume:.025, delay:.03}); break;
+      case "command": tone(110, .22, {to:72, volume:.09, type:"sawtooth"}); break;
+      case "lightning": noise(.25, .1, 2400); tone(880, .18, {to:130, volume:.055, type:"sawtooth"}); break;
+      case "fire": noise(.28, .08, 1100); tone(145, .22, {to:70, volume:.05, type:"sawtooth"}); break;
+      case "heal": tone(330, .22, {to:494, volume:.045}); tone(494, .25, {to:660, volume:.035, delay:.08}); break;
+      case "buff": tone(240, .18, {to:360, volume:.04, type:"triangle"}); break;
+      case "damage": noise(.1, .08, 900); tone(105, .14, {to:58, volume:.07, type:"square"}); break;
+      case "debuff": tone(190, .3, {to:76, volume:.045, type:"sawtooth"}); break;
+      case "morale": tone(72, .28, {to:45, volume:.12, type:"sine"}); noise(.12, .05, 420); break;
+      case "dice": noise(.08, .035, 1800); tone(460 + Math.random() * 120, .05, {volume:.025, type:"square"}); break;
+      case "success": tone(262, .18, {to:392, volume:.045}); tone(392, .28, {to:523, volume:.04, delay:.12}); break;
+      case "failure": tone(180, .2, {to:105, volume:.05, type:"triangle"}); break;
+      case "victory": tone(196, .25, {to:294, volume:.06}); tone(294, .3, {to:392, volume:.055, delay:.18}); break;
+    }
+  }
+
+  function toggle() {
+    muted = !muted;
+    try { localStorage.setItem("sanguo-muted", muted ? "1" : "0"); } catch (e) {}
+    if (muted) stopAmbience(); else { ensure(); startAmbience(); play("select"); }
+    syncButton();
+  }
+
+  document.addEventListener("pointerdown", function unlockAudio() { ensure(); }, {once:true});
+  document.addEventListener("DOMContentLoaded", syncButton);
+  return { ensure:ensure, play:play, toggle:toggle, sync:syncButton, isMuted:function() { return muted; } };
+})();
+window.BattleAudio = BattleAudio;
 
 /** 更新战斗状态栏文本（统一入口，便于调试） */
 function setStatus(msg) {
@@ -99,7 +223,7 @@ function api(method, path, body) {
         '<div style="padding:40px;text-align:center;color:#c07070">' +
         '<h2>无法连接到游戏服务器</h2>' +
         '<p>请先运行: <code style="background:#1a1410;padding:6px 12px;border-radius:4px">python main_web.py</code></p>' +
-        '<p style="color:#8a7a5a;margin-top:12px">然后访问 <code>http://localhost:8088</code></p>' +
+        '<p style="color:#8a7a5a;margin-top:12px">然后访问 <code>http://localhost:8089</code></p>' +
         '</div>';
     }
     return null;
@@ -118,6 +242,7 @@ function call(endpoint, body) {
 // SECTION 3: 主菜单 & 选将
 // ============================================================================
 function startGame() {
+  _lastTurnSignature = "";
   return call("/new").then(function() { return renderSelection(); });
 }
 
@@ -599,6 +724,37 @@ function applySelectionRangePreview() {
   legend.style.display = parts.length ? "inline-flex" : "none";
 }
 
+function announceTurn(state) {
+  if (!state || state.phase !== "battle") return;
+  var signature = state.turn + ":" + state.current_team;
+  if (_lastTurnSignature === signature) return;
+  _lastTurnSignature = signature;
+  var banner = document.getElementById("turn-banner");
+  if (!banner || window.__stressMode) return;
+  banner.textContent = "第" + state.turn + "回合 · " + (state.current_player || "") + "执令";
+  banner.classList.remove("show");
+  void banner.offsetWidth;
+  banner.classList.add("show");
+  BattleAudio.play("morale");
+}
+
+function showSkillCinematic(name, caster, kind) {
+  if (window.__stressMode) return Promise.resolve();
+  var layer = document.getElementById("skill-cinematic");
+  var battle = document.getElementById("scr-battle");
+  if (!layer) return Promise.resolve();
+  layer.setAttribute("data-kind", kind || "buff");
+  layer.innerHTML = '<div class="skill-command"><strong>' + name + '</strong><small>' + caster + ' · 军令既出</small></div>';
+  layer.classList.add("active");
+  if (battle) battle.classList.add("battle-cinematic-focus");
+  BattleAudio.play("command");
+  return sleep(720).then(function() {
+    layer.classList.remove("active");
+    layer.innerHTML = "";
+    if (battle) battle.classList.remove("battle-cinematic-focus");
+  });
+}
+
 function renderBattle() {
   var r = G;
   if (!r) return call("/state").then(renderBattle);
@@ -614,8 +770,9 @@ function renderBattle() {
     renderBattleGrid("bside1-grid", r.p1, p1IsAlly);
     renderBattleGrid("bside2-grid", r.p2, !p1IsAlly);
     highlightActiveSide(r);
+    announceTurn(r);
 
-    setStatus(r.event || "👆 点击己方武将，选择本回合动作");
+    setStatus(r.event || "点击己方武将，下达本回合军令");
     updateBattlePhaseUI();
     applySelectionRangePreview();
   } catch (e) {
@@ -739,8 +896,8 @@ var _battleClickLock = false;
 
 function updateBattlePhaseUI() {
   var phTag = battlePhase === "target" ? "ph-target" : (selectedAttacker ? "ph-attack" : "ph-skill");
-  var phText = battlePhase === "target" ? "🎯 选择普攻目标" :
-    (selectedAttacker ? "✅ 已选：" + selectedAttacker.general.name + " — 点击下方按钮" : "🔍 点击武将选择动作");
+  var phText = battlePhase === "target" ? "择定普攻目标" :
+    (selectedAttacker ? "已执 " + selectedAttacker.general.name + " · 请下令" : "点选武将 · 下达军令");
   document.getElementById("bphase").className = "phase-tag " + phTag;
   document.getElementById("bphase").textContent = phText;
 
@@ -783,7 +940,7 @@ function updateBattlePhaseUI() {
     }
   }
 
-  skipBtn.textContent = battlePhase === "target" ? "取消普攻" : "⏭ 跳过";
+  skipBtn.textContent = battlePhase === "target" ? "收回攻令" : "结束行动";
 }
 
 /**
@@ -801,6 +958,7 @@ function onBattleAllyCell(r, c) {
 
     selectedAttacker = { general: g, row: r, col: c };
     battlePhase = "action";
+    BattleAudio.play("select");
     setStatus("已选中 " + g.name + " (武" + (g.effective_force || g.force || 0) + " 智" + (g.effective_intelligence || g.intelligence || 0) + ")");
     return renderBattle();
   } catch (e) {
@@ -859,8 +1017,7 @@ async function onBattleEnemyCell(r, c) {
 
   var attackResult = result.attack_result;
   if (attackResult && attackResult.performed && aCell && tCell) {
-    animAttack(aCell, tCell, attackResult.damage || 0);
-    await sleep(420);
+    await animAttack(aCell, tCell, attackResult.damage || 0, attackResult.target_hp_after <= 0);
   }
 
   clearBattleSelection();
@@ -908,22 +1065,11 @@ async function useSkill() {
   var skillType = detectSkillType(sk);
   var aIsP1 = (G.current_team === "p1");
   var allyGrid = aIsP1 ? "#bside1-grid" : "#bside2-grid";
-  var enemyGrid = aIsP1 ? "#bside2-grid" : "#bside1-grid";
 
-  // 施法者特效
+  // 施法者先抬卡并进入技能暗场，随后才结算真实目标反馈。
   var cellEl = document.querySelector(allyGrid + ' .bcell[data-row="' + selectedAttacker.row + '"][data-col="' + selectedAttacker.col + '"]');
-  if (cellEl) animSkill(cellEl, sk, "", skillType);
-
-  // 记录敌方战前 HP
-  var enemyBefore = {};
-  document.querySelectorAll(enemyGrid + " .bcell").forEach(function(ec) {
-    var n = ec.getAttribute("data-name");
-    var hpEl = ec.querySelector(".chp");
-    if (n && hpEl) {
-      var parts = hpEl.textContent.split("/");
-      enemyBefore[n] = parseInt(parts[0]) || 0;
-    }
-  });
+  if (cellEl) cellEl.classList.add("casting");
+  await showSkillCinematic(sk, selectedAttacker.general.name, skillType);
 
   var body = { general_id: selectedAttacker.general.id };
   if (castOptions.area) {
@@ -935,41 +1081,77 @@ async function useSkill() {
   if (castOptions.mode) body.skill_mode = castOptions.mode;
   if (castOptions.timing) body.skill_timing = castOptions.timing;
   if (guess) { body.guess = guess; }
-  return call("/battle/skill", body).then(function(result) {
-    if (!result) {
-      setStatus("技能请求失败，请检查服务器连接");
-      clearBattleSelection();
-      return renderBattle();
-    }
-    setStatus(result.event || (sk + " 已使用"));
-
-    // 技能执行后，对受损目标显示特效
-    setTimeout(function() {
-      document.querySelectorAll(enemyGrid + " .bcell").forEach(function(ec) {
-        var n = ec.getAttribute("data-name");
-        if (n && enemyBefore[n] !== undefined) {
-          var hpEl = ec.querySelector(".chp");
-          if (!hpEl) return;
-          var afterHp = parseInt(hpEl.textContent.split("/")[0]) || 0;
-          var dmg = enemyBefore[n] - afterHp;
-          if (dmg > 0) {
-            var center = getCellCenter(ec);
-            if (skillType === "lightning") FX.lightningStrike(center.x, center.y);
-            else if (skillType === "fire") FX.fireBurst(center.x, center.y);
-            spawnFloatNum(ec, dmg, "damage");
-            ec.classList.add("impact-flash");
-            setTimeout(function() { ec.classList.remove("impact-flash"); }, 400);
-          } else if (afterHp > enemyBefore[n]) {
-            spawnFloatNum(ec, afterHp - enemyBefore[n], "heal");
-          }
-        }
-      });
-    }, 100);
-
+  var result = await call("/battle/skill", body);
+  if (!result) {
+    setStatus("技能请求失败，请检查服务器连接");
     clearBattleSelection();
-    if (G.phase === "over") { showGameOver(); return; }
     return renderBattle();
+  }
+  setStatus(result.event || (sk + " 已使用"));
+  if (result.skill_result && result.skill_result.success) {
+    await playSkillResolution(result.skill_result, sk, skillType);
+  } else {
+    BattleAudio.play("failure");
+  }
+
+  clearBattleSelection();
+  if (G.phase === "over") { showGameOver(); return; }
+  return renderBattle();
+}
+
+function findBattleCellByName(name) {
+  return Array.prototype.find.call(document.querySelectorAll("#scr-battle .bcell[data-name]"), function(cell) {
+    return cell.getAttribute("data-name") === name;
+  }) || null;
+}
+
+function generalStateByName(name) {
+  var all = [].concat((G && G.p1 && G.p1.generals) || [], (G && G.p2 && G.p2.generals) || []);
+  return all.find(function(general) { return general.name === name; }) || null;
+}
+
+function detailVisualKind(detail, result, fallback) {
+  var effect = (detail && detail.effect) || "";
+  if (fallback === "lightning" || fallback === "fire") return fallback;
+  if ((detail && (detail.healed > 0 || detail.heal > 0)) || /回复|恢复|治疗|生命上限/.test(effect)) return "heal";
+  if ((detail && detail.damage > 0) || result.type === "damage") return "damage";
+  if (/削弱|降低|减少|减益|武力-|智力-|中毒|离间|挑衅/.test(effect) || fallback === "debuff") return "debuff";
+  if (/士气|号令|鼓舞/.test(effect) || fallback === "morale") return "morale";
+  return "buff";
+}
+
+async function playSkillResolution(skillResult, skillName, fallbackKind) {
+  if (window.__stressMode) return;
+  var details = skillResult.details || [];
+  var sounded = {};
+  if (!details.length) {
+    BattleAudio.play(skillResult.success ? (fallbackKind || "command") : "failure");
+    return sleep(180);
+  }
+  details.forEach(function(detail) {
+    var cell = findBattleCellByName(detail.target);
+    if (!cell) return;
+    var kind = detailVisualKind(detail, skillResult, fallbackKind);
+    var cssKind = kind === "fire" ? "damage" : kind;
+    cell.classList.add("resolve-" + cssKind);
+    var center = getCellCenter(cell);
+    if (kind === "lightning") FX.lightningStrike(center.x, center.y);
+    else if (kind === "fire") FX.fireBurst(center.x, center.y);
+    else if (kind === "heal") FX.healSparkles(center.x, center.y);
+    else if (kind === "debuff") FX.debuffMiasma(center.x, center.y);
+    else if (kind === "morale") FX.moraleWave(center.x, center.y);
+    else FX.burst(center.x, center.y, "#91aa8e", 10, 2.5);
+
+    if (detail.damage > 0) spawnFloatNum(cell, detail.damage, "damage");
+    else if ((detail.healed || detail.heal) > 0) spawnFloatNum(cell, -(detail.healed || detail.heal), "heal");
+    else if (detail.judgment && detail.damage === 0) spawnSkillLabel(cell, "避");
+    else if (detail.effect) spawnSkillLabel(cell, detail.effect.length > 10 ? skillName : detail.effect);
+
+    if (!sounded[kind]) { BattleAudio.play(kind); sounded[kind] = true; }
+    var finalState = generalStateByName(detail.target);
+    if (finalState && !finalState.alive) cell.classList.add("defeated-card");
   });
+  await sleep(680);
 }
 
 /** 跳过当前阶段/回合 */
@@ -988,26 +1170,32 @@ function skipPhase() {
 /** 奇偶选择弹窗 */
 function askOddEven(msg) {
   msg = msg || "攻速判定——猜对则额外普攻一次";
+  if (window.__stressMode) return Promise.resolve(Math.random() < .5 ? "奇" : "偶");
   return new Promise(function(resolve) {
     var overlay = document.createElement("div");
-    overlay.style.cssText = "position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.8);z-index:400;display:flex;align-items:center;justify-content:center";
+    overlay.className = "speed-judgment-overlay odd-even-order";
     overlay.innerHTML =
-      '<div style="background:linear-gradient(180deg,#1a1410,#0b0906);border:2px solid var(--gold);border-radius:14px;padding:28px 36px;text-align:center;color:var(--text)">' +
-      '<div style="font-size:20px;color:var(--gold);margin-bottom:8px">🎲 猜奇偶</div>' +
-      '<div style="font-size:14px;color:var(--muted);margin-bottom:20px">' + msg + '</div>' +
-      '<div style="display:flex;gap:16px;justify-content:center">' +
-      '<div class="btn primary" style="font-size:18px;padding:12px 32px" onclick="this.parentElement.parentElement._resolve(\'奇\')">奇</div>' +
-      '<div class="btn" style="font-size:18px;padding:12px 32px" onclick="this.parentElement.parentElement._resolve(\'偶\')">偶</div>' +
-      '</div></div>';
+      '<div class="speed-judgment-panel"><div class="speed-title">听骰定势</div>' +
+      '<div class="speed-choice">' + msg + '</div><div class="speed-die">骰</div>' +
+      '<div class="odd-even-actions"><button type="button" data-guess="奇">押 奇</button>' +
+      '<button type="button" data-guess="偶">押 偶</button></div><div class="speed-message">点击暗处可收回军令</div></div>';
     var wrapper = overlay.firstElementChild;
-    wrapper._resolve = function(v) { overlay.remove(); resolve(v); };
+    wrapper.querySelectorAll("[data-guess]").forEach(function(button) {
+      button.addEventListener("click", function(e) {
+        e.stopPropagation();
+        BattleAudio.play("dice");
+        overlay.remove(); resolve(button.getAttribute("data-guess"));
+      });
+    });
     overlay.addEventListener("click", function(e) { if (e.target === overlay) { overlay.remove(); resolve(null); } });
     document.body.appendChild(overlay);
+    BattleAudio.play("dice");
   });
 }
 
 /** 将服务器返回的真实骰点以滚动动画呈现，并明确显示判定影响。 */
 function showSpeedJudgment(judgment) {
+  if (window.__stressMode) return Promise.resolve();
   return new Promise(function(resolve) {
     var faces = ["⚀", "⚁", "⚂", "⚃", "⚄", "⚅"];
     var overlay = document.createElement("div");
@@ -1044,6 +1232,7 @@ function showSpeedJudgment(judgment) {
       if (frame < 15) {
         die.textContent = faces[Math.floor(Math.random() * faces.length)];
         die.style.transform = "rotate(" + (frame * 31) + "deg) scale(" + (1 + (frame % 3) * 0.08) + ")";
+        if (frame % 3 === 0) BattleAudio.play("dice");
         frame++;
         setTimeout(rollFrame, 35 + frame * 7);
         return;
@@ -1059,6 +1248,7 @@ function showSpeedJudgment(judgment) {
       result.className = "speed-result " + (judgment.success ? "success" : "failure");
       message.textContent = judgment.message || "";
       overlay.querySelector(".speed-judgment-panel").classList.add(judgment.success ? "success" : "failure");
+      BattleAudio.play(judgment.success ? "success" : "failure");
       finished = true;
       closeTimer = setTimeout(close, 1600);
     }
@@ -1068,6 +1258,7 @@ function showSpeedJudgment(judgment) {
 
 /** 简单二选一弹窗，返回选项 value；点击遮罩取消。 */
 function askSkillOption(title, message, options) {
+  if (window.__stressMode) return Promise.resolve(options && options[0] ? options[0].value : null);
   return new Promise(function(resolve) {
     var overlay = document.createElement("div");
     overlay.className = "skill-option-overlay";
@@ -1155,6 +1346,7 @@ function selectRectAreaForSkill(config) {
       resolve(null);
       return;
     }
+    if (window.__stressMode) { resolve(candidates[0]); return; }
 
     var overlay = document.createElement("div");
     overlay.className = "skill-area-overlay";
@@ -1305,6 +1497,7 @@ async function askAdjacentDirection() {
  * 后端 logical row 对应转置布局中的视觉竖列，因此返回 0~2 的 logical row。
  */
 function selectVerticalColumnForSkill() {
+  if (window.__stressMode) return Promise.resolve(0);
   return new Promise(function(resolve) {
     var overlay = document.createElement("div");
     overlay.className = "skill-area-overlay";
@@ -1355,6 +1548,7 @@ function selectVerticalColumnForSkill() {
 
 /** setTimeout 的 Promise 包装 */
 function sleep(ms) {
+  if (window.__stressMode) return Promise.resolve();
   return new Promise(function(resolve) { setTimeout(resolve, ms); });
 }
 
@@ -1365,6 +1559,7 @@ function showGameOver() {
   showScreen("over");
   document.getElementById("over-winner").textContent = (G ? G.winner : "?") + " 获得胜利！";
   document.getElementById("over-stats").textContent = "总回合数: " + (G ? G.turn : "?");
+  BattleAudio.play("victory");
 }
 
 function initGallery() {
@@ -1429,6 +1624,7 @@ document.addEventListener("click", function(e) {
 
 function quitToMenu() {
   G = null;
+  _lastTurnSignature = "";
   selectedGenerals = [];
   clearBattleSelection();
   battlePhase = "select";
@@ -1571,7 +1767,9 @@ function quitToMenu() {
         default: FX.burst(center.x, center.y, skillType === "damage" ? "#ff6040" : "#ffb840", 18, 5);
       }
       spawnSkillLabel(el, skillName, skillType);
-    }
+    },
+    stats: function() { return { particles:particles.length, ambient:ambientParticles.length }; },
+    clear: function() { particles.length = 0; }
   };
 
   function detectSkillType(name) {
@@ -1649,31 +1847,35 @@ function spawnSkillLabel(el, text) {
   setTimeout(function() { d.remove(); }, 1600);
 }
 
-function animAttack(aEl, tEl, dmg) {
+function animAttack(aEl, tEl, dmg, defeated) {
+  if (window.__stressMode) return Promise.resolve();
   var aCenter = getCellCenter(aEl);
   var tCenter = getCellCenter(tEl);
-  FX.drawWeaponArc(aCenter.x, aCenter.y, tCenter.x, tCenter.y, "rgba(255,255,240,.7)");
-  tEl.classList.add("impact-flash");
-  setTimeout(function() { tEl.classList.remove("impact-flash"); }, 400);
-
-  if (window.gsap) {
-    gsap.timeline()
-      .to(aEl, { duration: 0.15, x: tCenter.x - aCenter.x, y: tCenter.y - aCenter.y, scale: 1.15, ease: "power2.in" })
-      .call(function() {
-        FX.slashTrail(aCenter.x, aCenter.y, tCenter.x, tCenter.y);
-        FX.screenShake();
-        if (dmg > 0) spawnFloatNum(tEl, dmg, "damage");
-        else spawnSkillLabel(tEl, "格挡");
-      })
-      .to(aEl, { duration: 0.2, x: 0, y: 0, scale: 1, ease: "power2.out" });
-  } else {
-    aEl.classList.add("attacking");
-    setTimeout(function() { aEl.classList.remove("attacking"); }, 350);
+  var dx = (tCenter.x - aCenter.x) * .78;
+  var dy = (tCenter.y - aCenter.y) * .78;
+  aEl.classList.remove("selected");
+  aEl.classList.add("attack-anticipation");
+  BattleAudio.play("anticipate");
+  return sleep(130).then(function() {
+    aEl.classList.remove("attack-anticipation");
+    aEl.style.transition = "transform .13s cubic-bezier(.7,0,1,.55)";
+    aEl.style.transform = "translate(" + dx + "px," + dy + "px) scale(1.09)";
+    FX.drawWeaponArc(aCenter.x, aCenter.y, tCenter.x, tCenter.y, "rgba(230,218,188,.72)");
+    return sleep(110);
+  }).then(function() {
     FX.slashTrail(aCenter.x, aCenter.y, tCenter.x, tCenter.y);
     FX.screenShake();
-    if (dmg > 0) spawnFloatNum(tEl, dmg, "damage");
-    else spawnSkillLabel(tEl, "格挡");
-  }
+    tEl.classList.add("impact-flash", "resolve-damage");
+    BattleAudio.play(dmg > 0 ? "impact" : "block");
+    if (dmg > 0) spawnFloatNum(tEl, dmg, "damage"); else spawnSkillLabel(tEl, "格挡");
+    if (defeated) tEl.classList.add("defeated-card");
+    aEl.style.transition = "transform .2s cubic-bezier(.16,1,.3,1)";
+    aEl.style.transform = "translate(0,0) scale(1)";
+    return sleep(240);
+  }).then(function() {
+    aEl.style.transition = ""; aEl.style.transform = "";
+    tEl.classList.remove("impact-flash", "resolve-damage");
+  });
 }
 
 function animSkill(el, name, detail, kind) {

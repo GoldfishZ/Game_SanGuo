@@ -6,7 +6,7 @@
 <title>三国武将卡牌游戏</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script>window.gsap = window.gsap || null; if(!window.gsap) console.warn('GSAP unavailable, using CSS fallback');</script>
-<link rel="stylesheet" href="/styles.css?v=11">
+<link rel="stylesheet" href="/styles.css?v=14">
 </head>
 <body>
 
@@ -92,18 +92,26 @@
 
   <!-- Screen 5: Battle -->
   <div id="scr-battle" class="screen">
+    <div class="battle-atmosphere" aria-hidden="true">
+      <div class="tent-shadow tent-shadow-left"></div>
+      <div class="tent-shadow tent-shadow-right"></div>
+      <div class="table-map-mark"></div>
+    </div>
+    <div id="turn-banner" class="turn-banner" aria-live="polite"></div>
+    <div id="skill-cinematic" class="skill-cinematic" aria-live="polite"></div>
     <div class="battle-top-bar">
       <span id="bturn" style="font-size:15px;color:var(--gold)">第1回合 — 玩家1</span>
       <span id="bphase" class="phase-tag ph-skill" style="margin-left:8px">技能阶段</span>
       <span id="battle-range-legend" class="battle-range-legend"></span>
       <span style="flex:1"></span>
+      <button type="button" id="sound-toggle" class="sound-toggle" onclick="BattleAudio.toggle()" aria-label="切换声音">声音 开</button>
       <span class="btn danger" onclick="quitToMenu()" style="font-size:11px;padding:4px 10px" data-tooltip="退出当前游戏，返回主菜单">✕ 退出</span>
     </div>
 
     <!-- 上半区：玩家1 -->
     <div class="bside" id="bside1">
       <div class="bside-header shu-bg">
-        <span class="bside-banner">🏴</span>
+        <span class="bside-banner" aria-hidden="true">壹</span>
         <span id="m1name" class="bside-name">玩家1</span>
         <span class="morale-inline">
           <span class="morale-bar"><span class="fill" id="m1fill" style="width:100%"></span></span>
@@ -116,14 +124,14 @@
     <!-- 战场中线 -->
     <div class="battlefield-divider">
       <div class="bf-line"></div>
-      <div class="bf-clash">⚔️</div>
+      <div class="bf-clash">战</div>
       <div class="bf-line"></div>
     </div>
 
     <!-- 下半区：玩家2 -->
     <div class="bside" id="bside2">
       <div class="bside-header wei-bg">
-        <span class="bside-banner">🏴</span>
+        <span class="bside-banner" aria-hidden="true">贰</span>
         <span id="m2name" class="bside-name">玩家2</span>
         <span class="morale-inline">
           <span class="morale-bar"><span class="fill" id="m2fill" style="width:100%"></span></span>
@@ -135,9 +143,9 @@
 
     <div class="status" id="battle-status">—— 战斗开始 ——</div>
     <div class="toolbar" id="battle-actions">
-      <div class="btn primary" id="bact-attack" onclick="chooseAttack()" data-tooltip="普攻：选择己方武将攻击敌方前排目标。<br>武力高于目标造成武力差伤害，否则最多造成3点伤害。">⚔ 普攻</div>
-      <div class="btn" id="bact-skill" onclick="useSkill()" data-tooltip="使用技能：消耗士气释放武将主动技能。<br>技能有冷却时间，效果包括伤害、强化、削弱、治疗等。">✨ 技能</div>
-      <div class="btn" id="bact-skip" onclick="skipPhase()" data-tooltip="跳过当前阶段。如果不想使用技能或普攻，可以直接跳过。">⏭ 跳过</div>
+      <div class="btn primary" id="bact-attack" onclick="chooseAttack()" data-order="攻" data-tooltip="普攻：选择己方武将攻击敌方前排目标。<br>武力高于目标造成武力差伤害，否则最多造成3点伤害。">普通攻击</div>
+      <div class="btn" id="bact-skill" onclick="useSkill()" data-order="令" data-tooltip="使用技能：消耗士气释放武将主动技能。<br>技能有冷却时间，效果包括伤害、强化、削弱、治疗等。">发动技能</div>
+      <div class="btn" id="bact-skip" onclick="skipPhase()" data-order="止" data-tooltip="跳过当前阶段。如果不想使用技能或普攻，可以直接跳过。">结束行动</div>
     </div>
   </div>
 
@@ -236,7 +244,8 @@
 
 <script src="/tooltips.js?v=12"></script>
 <script src="/tutorial.js?v=13"></script>
-<script src="/game.js?v=17"></script>
+<script src="/game.js?v=19"></script>
+<script src="/frontend_stress.js?v=2"></script>
 <script>
 // 出征计数
 (function() {

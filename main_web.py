@@ -9,7 +9,7 @@ import os
 import sys
 import random
 import threading
-from http.server import HTTPServer, BaseHTTPRequestHandler
+from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -349,6 +349,7 @@ def handle_api(path, body, handler):
         bs = STATE.battle_system
         from src.skills.skill_base import TargetType
         caster = None
+        skill_result = None
         gid = body.get("general_id", None)
         if gid is not None:
             try:
@@ -432,10 +433,10 @@ def handle_api(path, body, handler):
                 targets = enemy_team.get_alive_generals()[:1]
             # 攻速判定猜奇偶（如雷击需要）
             guess = body.get("guess", None)
-            result = caster.use_active_skill(targets, bs.battle_context, caster_team, guess=guess)
-            STATE.last_event = f"{caster.name} 使用 {caster.active_skill.name}" if result.get("success") else (result.get("message") or "技能失败")
-            if result.get("success"):
-                detail = result.get("details", [])
+            skill_result = caster.use_active_skill(targets, bs.battle_context, caster_team, guess=guess)
+            STATE.last_event = f"{caster.name} 使用 {caster.active_skill.name}" if skill_result.get("success") else (skill_result.get("message") or "技能失败")
+            if skill_result.get("success"):
+                detail = skill_result.get("details", [])
                 if detail:
                     effects = "; ".join(d.get("effect", "") for d in detail[:3] if d.get("effect"))
                     if effects:
@@ -444,7 +445,12 @@ def handle_api(path, body, handler):
                 STATE.finish_battle()
         else:
             STATE.last_event = "该武将无法使用技能（冷却中、已阵亡或士气不足）"
-        return STATE.to_json()
+        response = STATE.to_json()
+        if skill_result is not None:
+            response["skill_result"] = skill_result
+            response["skill_id"] = caster.active_skill.skill_id
+            response["caster_id"] = caster.general_id
+        return response
 
     # POST /api/battle/attack -> {"attacker_id": 1, "target_id": 2} or legacy indexes
     if path == "/api/battle/attack" and STATE.battle_system and STATE.phase == "battle":
@@ -588,6 +594,8 @@ def handle_api(path, body, handler):
 
 # ---- HTTP Server ----
 class GameServer(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
     def do_GET(self):
         p = urlparse(self.path).path
         if p == "/" or p == "":
@@ -611,8 +619,11 @@ class GameServer(BaseHTTPRequestHandler):
                     fp = alt2; break
         if os.path.exists(fp) and os.path.isfile(fp):
             ext = os.path.splitext(fp)[1]
+            with open(fp, "rb") as f:
+                content = f.read()
             self.send_response(200)
             self.send_header("Content-Type", MIME.get(ext, "application/octet-stream"))
+            self.send_header("Content-Length", str(len(content)))
             # Cache headers
             cache_age = CACHE_MAX_AGE.get(ext, 0)
             if cache_age > 0:
@@ -620,10 +631,11 @@ class GameServer(BaseHTTPRequestHandler):
             else:
                 self.send_header("Cache-Control", "no-cache")
             self.end_headers()
-            with open(fp, "rb") as f:
-                self.wfile.write(f.read())
+            self.wfile.write(content)
         else:
-            self.send_response(404); self.end_headers()
+            self.send_response(404)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
 
     def do_POST(self):
         p = urlparse(self.path).path
@@ -636,17 +648,20 @@ class GameServer(BaseHTTPRequestHandler):
             text = data
         else:
             text = json.dumps(data, ensure_ascii=False)
+        encoded = text.encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(encoded)))
         self.end_headers()
-        self.wfile.write(text.encode("utf-8"))
+        self.wfile.write(encoded)
 
     def do_OPTIONS(self):
         self.send_response(200)
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET,POST,OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.send_header("Content-Length", "0")
         self.end_headers()
 
     def log_message(self, format, *args):
@@ -656,7 +671,7 @@ class GameServer(BaseHTTPRequestHandler):
 def start():
     os.makedirs(WEB_DIR, exist_ok=True)
     port = int(os.environ.get("PORT", "8089"))
-    server = HTTPServer(("0.0.0.0", port), GameServer)
+    server = ThreadingHTTPServer(("0.0.0.0", port), GameServer)
     print("=== 三国武将卡牌游戏 Web 版 ===")
     print(f"   打开浏览器访问: http://localhost:{port}")
     print(f"   按 Ctrl+C 停止服务器")
