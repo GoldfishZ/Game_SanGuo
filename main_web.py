@@ -115,6 +115,44 @@ class GameState:
                 break
         self.last_event = f"战斗结束，{self.winner} 获胜"
 
+    def clear_combat_events(self):
+        """清空双方武将的表现事件，确保一次接口只返回本次结算。"""
+        if not self.controller:
+            return
+        for player in (self.controller.player1, self.controller.player2):
+            for general in player.selected_generals:
+                general.drain_combat_events()
+
+    def drain_combat_events(self):
+        """按队伍及阵位顺序收集本次结算产生的表现事件。"""
+        if not self.controller:
+            return []
+        events = []
+        for player_key, player in (("p1", self.controller.player1),
+                                   ("p2", self.controller.player2)):
+            for general in player.selected_generals:
+                for event in general.drain_combat_events():
+                    event.setdefault("team", player_key)
+                    events.append(event)
+        return events
+
+    @staticmethod
+    def _effect_json(effect):
+        """把 buff/debuff 转为安全 DTO，过滤其中可能存在的 General 引用。"""
+        result = {
+            "type": effect.get("type", ""),
+            "duration": effect.get("duration", 0),
+        }
+        value = effect.get("value", 0)
+        if isinstance(value, (str, int, float, bool)) or value is None:
+            result["value"] = value
+        elif hasattr(value, "general_id"):
+            result["value"] = getattr(value, "name", "")
+            result["target_id"] = value.general_id
+        else:
+            result["value"] = str(value)
+        return result
+
     def to_json(self):
         c = self.controller
         if not c:
@@ -166,6 +204,7 @@ class GameState:
                 "name": g.name, "id": g.general_id,
                 "hp": g.current_hp, "maxHp": g.max_hp,
                 "force": g.force, "intelligence": g.intelligence,
+                "cost": g.cost, "camp": g.camp.value, "rarity": g.rarity.name,
                 "effective_force": g.get_effective_force(),
                 "effective_intelligence": g.get_effective_intelligence(),
                 "alive": g.is_alive,
@@ -176,8 +215,11 @@ class GameState:
                 "cooldown": g.active_skill_cooldown,
                 "image": g.image_file or "",
                 "attributes": [a.value for a in (g.attribute or [])],
+                "buffs": [self._effect_json(buff) for buff in g.buffs],
+                "debuffs": [self._effect_json(debuff) for debuff in g.debuffs],
                 "_ambushHidden": g.get_passive_skill("伏兵").is_hidden if g.has_passive_skill("伏兵") else False,
                 "_ambushTriggered": g.get_passive_skill("伏兵").triggered if g.has_passive_skill("伏兵") else False,
+                "_fenceActive": g.get_passive_skill("防栅").is_active if g.has_passive_skill("防栅") else False,
                 "_fenceBroken": not g.get_passive_skill("防栅").is_active if g.has_passive_skill("防栅") else False,
                 "_reviveUsed": g.get_passive_skill("复活").has_revived if g.has_passive_skill("复活") else False,
                 "_hasAttacked": g._has_attacked_this_turn,
@@ -319,6 +361,7 @@ def handle_api(path, body, handler):
         STATE.battle_system.turn_count = 1
         STATE.turn_count = 1
         STATE.battle_system.current_side.update_effects()
+        STATE.clear_combat_events()
         return STATE.to_json()
 
     # POST /api/battle/next or /api/battle/skip -> end current player's turn
@@ -334,15 +377,21 @@ def handle_api(path, body, handler):
             return STATE.to_json()
 
         # 回合结束后切换；效果只在新行动方回合开始时结算一次。
-        bs._end_turn_cleanup()
+        STATE.clear_combat_events()
+        morale_event = bs._end_turn_cleanup()
+        ending_team = "p1" if bs.current_side == c.player1.team else "p2"
+        morale_event["team"] = ending_team
         bs._switch_to_next_player()
         bs.turn_count += 1
         STATE.turn_count = bs.turn_count
         # 新回合方也更新效果（防栅重建等）
         bs.current_side.update_effects()
+        turn_events = [morale_event] + STATE.drain_combat_events()
         current_player = c.player1.name if bs.current_side == c.player1.team else c.player2.name
         STATE.last_event = f"第{STATE.turn_count}回合，轮到{current_player}行动"
-        return STATE.to_json()
+        response = STATE.to_json()
+        response["turn_events"] = turn_events
+        return response
 
     # POST /api/battle/skill -> {"general_id": 1}
     if path == "/api/battle/skill" and STATE.battle_system and STATE.phase == "battle":
@@ -433,6 +482,7 @@ def handle_api(path, body, handler):
                 targets = enemy_team.get_alive_generals()[:1]
             # 攻速判定猜奇偶（如雷击需要）
             guess = body.get("guess", None)
+            STATE.clear_combat_events()
             skill_result = caster.use_active_skill(targets, bs.battle_context, caster_team, guess=guess)
             STATE.last_event = f"{caster.name} 使用 {caster.active_skill.name}" if skill_result.get("success") else (skill_result.get("message") or "技能失败")
             if skill_result.get("success"):
@@ -450,6 +500,7 @@ def handle_api(path, body, handler):
             response["skill_result"] = skill_result
             response["skill_id"] = caster.active_skill.skill_id
             response["caster_id"] = caster.general_id
+            response["combat_events"] = STATE.drain_combat_events()
         return response
 
     # POST /api/battle/attack -> {"attacker_id": 1, "target_id": 2} or legacy indexes
@@ -504,6 +555,7 @@ def handle_api(path, body, handler):
                 attacker.last_attack_speed_judgment = None
             target_pos_before = (c.player1.team.get_general_position(target) or
                                 c.player2.team.get_general_position(target))
+            STATE.clear_combat_events()
             dmg = attacker.attack(target, guess)
             if speed_mode and attacker.last_attack_speed_judgment:
                 speed_judgment = dict(attacker.last_attack_speed_judgment)
@@ -530,6 +582,7 @@ def handle_api(path, body, handler):
                 "performed": attack_performed,
                 "target_hp_before": target_hp_before,
                 "target_hp_after": target.current_hp,
+                "events": STATE.drain_combat_events(),
             }
             # 保留位置快照，便于未来阵型类普攻效果给出准确提示。
             target_pos_after = (c.player1.team.get_general_position(target) or

@@ -172,6 +172,42 @@ def test_web_serializes_frontend_skill_and_passive_state():
     assert dynamic["_forcedTargetId"] == target.general_id
 
 
+def test_web_thunder_strike_uses_caster_guess_once_and_triggers_on_success():
+    """Web 实际路径必须把玩家猜测传入，并用一次成功判定触发整次雷击。"""
+    main_web.STATE.reset()
+    controller = main_web.STATE.controller
+    caster = get_general_by_name("夏侯月姬")
+    targets = [get_general_by_name("张飞"), get_general_by_name("甘宁")]
+    controller.player1.add_general_to_team(caster)
+    for target in targets:
+        controller.player2.add_general_to_team(target)
+    controller.player1.team.position_general(caster, 0, 0)
+    controller.player2.team.position_general(targets[0], 0, 0)
+    controller.player2.team.position_general(targets[1], 1, 1)
+    main_web.STATE.phase = "battle"
+    main_web.STATE.battle_system = main_web.BattleSystem(
+        controller.player1.team,
+        controller.player2.team,
+        callbacks=None,
+        first_player_team_name=controller.player1.team.team_name,
+    )
+    hp_before = [target.current_hp for target in targets]
+
+    with patch("src.models.general.random.randint", return_value=2) as randint:
+        state = post("/api/battle/skill", {
+            "general_id": caster.general_id,
+            "area_row": 0,
+            "area_col": 0,
+            "guess": "偶",
+        })
+
+    result = state["skill_result"]
+    assert result["judgment"]["success"] is True
+    assert result["triggered"] is True
+    assert randint.call_count == 1
+    assert all(target.current_hp < hp for target, hp in zip(targets, hp_before))
+
+
 def test_web_meteor_rite_uses_selected_visual_vertical_column():
     """前端选择的视觉竖列应映射到同一 logical row，而不是通用 2x2 区域。"""
     main_web.STATE.reset()

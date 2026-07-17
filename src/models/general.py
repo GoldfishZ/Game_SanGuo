@@ -134,9 +134,28 @@ class General:
         self.last_attack_speed_judgment = None
         self._has_attacked_this_turn = False  # 本回合是否已普攻
         self._has_used_skill_this_turn = False  # 本回合是否已使用技能
+        # 仅用于表现层的短期事件队列。战斗规则仍由模型本身结算，Web 前端
+        # 消费这些事件来按真实顺序播放防栅、护盾、复活等反馈。
+        self._combat_events: List[Dict] = []
 
         # 所属队伍弱引用（由 Team.add_general 设置，用于连环等需要团队信息的被动技能）
         self._team = None
+
+    def record_combat_event(self, event_type: str, **payload) -> None:
+        """记录一次可视化战斗事件，不参与任何数值结算。"""
+        event = {
+            "type": event_type,
+            "general_id": self.general_id,
+            "target": self.name,
+        }
+        event.update(payload)
+        self._combat_events.append(event)
+
+    def drain_combat_events(self) -> List[Dict]:
+        """取出并清空尚未被表现层消费的战斗事件。"""
+        events = list(self._combat_events)
+        self._combat_events.clear()
+        return events
         
     def take_damage(self, damage: int, attacker: 'General' = None,
                     damage_source: str = "basic_attack") -> int:
@@ -165,17 +184,28 @@ class General:
         # 触发防栅被动技能（仅普攻，攻城状态可无视）
         if self.has_passive_skill("防栅") and not ignores_fence:
             fence_passive = self.get_passive_skill("防栅")
+            fence_was_active = fence_passive.is_active
             actual_damage = fence_passive.trigger_on_receive_damage(
                 self, actual_damage, damage_source
             )
+            if fence_was_active and not fence_passive.is_active:
+                self.record_combat_event(
+                    "fence_block", attacker=getattr(attacker, "name", ""),
+                    blocked=original_damage,
+                )
 
         # 护盾在防栅之后结算，避免被完全抵挡的普攻消耗护盾。
         if actual_damage > 0:
             for index, buff in enumerate(self.buffs):
                 if buff.get("type") == "damage_shield":
                     shield_value = max(0, int(buff.get("value", 0)))
+                    absorbed = min(actual_damage, shield_value)
                     actual_damage = max(0, actual_damage - shield_value)
                     del self.buffs[index]
+                    self.record_combat_event(
+                        "shield_absorb", attacker=getattr(attacker, "name", ""),
+                        absorbed=absorbed, remaining=0,
+                    )
                     break
         
         # 触发连环被动技能（伤害分担）
@@ -189,6 +219,10 @@ class General:
                         chain_generals.append(g)
             if len(chain_generals) > 1:
                 actual_damage = chain_passive.share_damage(chain_generals, actual_damage)
+                self.record_combat_event(
+                    "chain_share", damage=actual_damage,
+                    linked=[g.name for g in chain_generals],
+                )
                 # 将分担后的伤害应用到每个连计武将（跳过自己，已经算过了）
                 for g in chain_generals:
                     if g != self:
@@ -209,13 +243,18 @@ class General:
             if self.has_passive_skill("复活"):
                 revive_passive = self.get_passive_skill("复活")
                 if revive_passive.trigger_on_death(self):
-                    # 复活成功，记录日志
-                    pass
+                    self.record_combat_event("revive", hp=self.current_hp)
             
             # 触发魅力被动技能（反弹伤害）
             if self.has_passive_skill("魅力") and attacker:
                 charisma_passive = self.get_passive_skill("魅力")
                 return_damage = charisma_passive.trigger_on_death(self, attacker, fatal_damage)
+                judgment = getattr(charisma_passive, "last_judgment", None)
+                self.record_combat_event(
+                    "charisma_judgment", attacker=attacker.name,
+                    judgment=dict(judgment) if judgment else None,
+                    reflected=return_damage,
+                )
                 if return_damage > 0:
                     attacker.take_damage(return_damage, self, "passive")
                     
@@ -343,7 +382,14 @@ class General:
         # 触发勇猛被动技能
         if self.has_passive_skill("勇猛"):
             bravery_passive = self.get_passive_skill("勇猛")
+            before_damage = damage
             damage = bravery_passive.trigger_on_attack(self, target, damage)
+            judgment = getattr(bravery_passive, "last_judgment", None)
+            if self.current_hp < self.max_hp / 2 and judgment:
+                self.record_combat_event(
+                    "bravery_judgment", target=target.name,
+                    judgment=dict(judgment), bonus=max(0, damage - before_damage),
+                )
         
         # 伏兵反击：相邻隐藏伏兵可对攻击者造成反击伤害
         if target._team:
@@ -523,13 +569,22 @@ class General:
     
     def trigger_turn_start_passives(self):
         """触发回合开始时的被动技能"""
+        events = []
         # 触发募兵被动技能
         if self.has_passive_skill("募兵"):
             recruit_passive = self.get_passive_skill("募兵")
             heal_amount = recruit_passive.trigger_on_turn_start(self)
             if heal_amount > 0:
-                # 记录治疗日志
-                pass
+                event = {
+                    "type": "recruit_heal",
+                    "general_id": self.general_id,
+                    "target": self.name,
+                    "amount": heal_amount,
+                    "hp": self.current_hp,
+                }
+                self._combat_events.append(event)
+                events.append(event)
+        return events
     
     def has_passive_skill(self, skill_name: str) -> bool:
         """检查是否拥有指定的被动技能"""

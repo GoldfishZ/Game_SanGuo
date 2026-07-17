@@ -164,6 +164,7 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=10_800)
     parser.add_argument("--output", default="artifacts/frontend_stress_report.json")
     parser.add_argument("--preview-only", action="store_true")
+    parser.add_argument("--preview-screen", choices=("battle", "formation"), default="battle")
     args = parser.parse_args()
 
     edge = next((path for path in EDGE_CANDIDATES if path.exists()), None)
@@ -182,7 +183,9 @@ def main() -> int:
             env.update({"PYTHONIOENCODING": "utf-8", "PORT": str(args.port)})
             server = subprocess.Popen(
                 [sys.executable, "main_web.py"], cwd=ROOT, env=env,
-                stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                # 压力测试会产生数十万条 HTTP 访问日志；若使用未消费的 PIPE，
+                # 缓冲区填满后服务器会阻塞，看起来像游戏卡死。
+                stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT,
             )
             wait_json(base_url + "/api/state", timeout=30)
 
@@ -190,6 +193,7 @@ def main() -> int:
         browser = subprocess.Popen([
             str(edge), "--headless=new", f"--remote-debugging-port={args.debug_port}",
             f"--user-data-dir={profile}", "--enable-precise-memory-info",
+            "--no-sandbox", "--disable-gpu", "--disable-software-rasterizer",
             "--disable-background-networking", "--disable-extensions", "--no-first-run",
             "--no-default-browser-check", base_url,
         ], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -216,7 +220,23 @@ def main() -> int:
             raise RuntimeError("FrontendStress did not load")
 
         if args.preview_only:
-            preview = """
+            if args.preview_screen == "formation":
+                preview = """
+                (async function() {
+                  async function p(path, body) {
+                    const response = await fetch('/api' + path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body || {})});
+                    return response.json();
+                  }
+                  let state = await p('/new');
+                  state = await p('/select', {general_ids:state.pool.slice(0, 4).map(g => g.id)});
+                  state = await p('/select', {general_ids:state.pool.slice(0, 4).map(g => g.id)});
+                  window.G = state; window.__stressMode = false; window.selectedFormGen = state.p1.generals[0]; renderFormation();
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                  return {phase:state.phase, generals:state.p1.generals.map(g => g.name)};
+                })()
+                """
+            else:
+                preview = """
             (async function() {
               async function p(path, body) {
                 const response = await fetch('/api' + path, {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body || {})});
@@ -229,6 +249,7 @@ def main() -> int:
               state = await p('/place', {positions:state.p2.generals.map((g,i) => ({general_id:g.id,row:1,col:i+1}))});
               state = await p('/dice');
               window.G = state; window.__stressMode = false; renderBattle();
+              await new Promise(resolve => setTimeout(resolve, 1800));
               return {phase:state.phase, p1:state.p1.generals[0].name, p2:state.p2.generals[0].name};
             })()
             """

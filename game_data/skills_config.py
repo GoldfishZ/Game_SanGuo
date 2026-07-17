@@ -1161,13 +1161,13 @@ class MeticulousOffenseSkill(Skill):
 
 
 class ThunderStrikeSkill(Skill):
-    """雷击：在敌方 2x2 区域内降下两道需要判定的雷。"""
+    """雷击：施法者完成一次奇偶判定，成功后在敌方 2x2 区域降雷。"""
 
     def __init__(self):
         super().__init__(
             skill_id="thunder_strike",
             name="雷击",
-            description="选择敌方2x2方格并打下两道闪电；目标猜错奇偶则受到2倍智力差伤害",
+            description="选择敌方2x2方格并猜奇偶；猜对后打下两道闪电，猜错则无事发生",
             skill_type=SkillType.DAMAGE,
             target_type=TargetType.AREA_ENEMY,
             cooldown=0,
@@ -1209,12 +1209,14 @@ class ThunderStrikeSkill(Skill):
                 "details": [],
             }
 
+        # 整个技能只进行一次施法者判定；两道雷共享同一个结果。
+        judgment = odd_even_judgment(guess)
+        strike_targets = self._select_strike_targets(block_generals)
         details = []
         total_damage = 0
-        for target in self._select_strike_targets(block_generals):
-            judgment = odd_even_judgment(guess)  # 使用玩家选择的奇偶
+        for target in strike_targets:
             damage = 0
-            if not judgment["success"]:
+            if judgment["success"]:
                 damage = self._calculate_thunder_damage(caster, target)
                 damage = target.take_damage(damage, caster, "skill")
                 total_damage += damage
@@ -1230,6 +1232,8 @@ class ThunderStrikeSkill(Skill):
             "success": True,
             "type": "damage",
             "block": block_positions,
+            "judgment": judgment,
+            "triggered": judgment["success"],
             "strike_count": len(details),
             "total_damage": total_damage,
             "details": details,

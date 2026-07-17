@@ -61,9 +61,15 @@
 
   <!-- Screen 3: Formation -->
   <div id="scr-formation" class="screen">
-    <h2 id="form-title" style="color:var(--gold);margin-bottom:4px">玩家1 — 布置阵型</h2>
+    <div class="formation-heading">
+      <div><span class="formation-kicker">中军点将 · 沙盘布阵</span><h2 id="form-title">玩家1 — 布置阵型</h2></div>
+      <div class="formation-doctrine">前卫御敌 · 中坚策应 · 后卫蓄势</div>
+    </div>
     <div class="form-layout">
-      <div class="form-sidelist" id="form-list"></div>
+      <div class="formation-roster">
+        <div class="formation-panel-title"><span>将册</span><small>点选武将查看军情</small></div>
+        <div class="form-sidelist" id="form-list"></div>
+      </div>
       <div class="form-grid-wrap" id="form-grid-wrap">
         <div class="form-row-labels">
           <div class="row-label front">前卫<span class="row-hint">承受普攻</span></div>
@@ -72,6 +78,7 @@
         </div>
         <div class="form-grid" id="form-grid"></div>
       </div>
+      <aside id="formation-inspector" class="formation-inspector" aria-live="polite"></aside>
     </div>
     <div class="toolbar">
       <div class="btn primary" id="form-done" onclick="confirmFormation()">完成布置</div>

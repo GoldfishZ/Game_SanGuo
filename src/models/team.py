@@ -181,7 +181,11 @@ class Team:
             # 触发反击！
             counter_damage = max(1, damage // 2)
             ambush_passive.trigger_counter()
-            attacker.take_damage(counter_damage, general, "ambush_counter")
+            actual_counter = attacker.take_damage(counter_damage, general, "ambush_counter")
+            general.record_combat_event(
+                "ambush_counter", attacker=attacker.name,
+                protected=target.name, damage=actual_counter,
+            )
             # 只触发一个伏兵的反击
             break
 
@@ -601,11 +605,13 @@ class Team:
 
     def update_effects(self):
         """更新队伍中所有武将的回合开始被动、效果持续时间和技能冷却"""
+        events = []
         self.resolve_pending_morale_rewards()
         for general in self.generals:
             if general.is_alive:
-                general.trigger_turn_start_passives()
+                events.extend(general.trigger_turn_start_passives())
             general.update_effects()
+        return events
 
     def get_team_info(self) -> str:
         """

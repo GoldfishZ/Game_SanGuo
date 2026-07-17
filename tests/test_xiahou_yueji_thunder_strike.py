@@ -57,37 +57,45 @@ def test_xiahou_yueji_data_and_skill():
     assert xiahou_yueji.active_skill.morale_cost == 6
 
 
-def test_thunder_strike_deals_damage_when_enemy_guess_fails():
+def test_thunder_strike_deals_damage_when_caster_guess_succeeds_once():
     xiahou_yueji, target_a, target_b, outside, team, enemy_team = build_enemy_block()
 
-    with patch("src.models.general.random.choice", return_value="odd"), \
-            patch("src.models.general.random.randint", return_value=2):
-        result = team.use_skill(xiahou_yueji, [], BattleContext(team, enemy_team))
+    with patch("src.models.general.random.randint", return_value=2) as randint:
+        result = xiahou_yueji.use_active_skill(
+            [], BattleContext(team, enemy_team), team, guess="偶"
+        )
 
     assert result["success"] is True
+    assert result["judgment"]["success"] is True
+    assert result["triggered"] is True
     assert result["strike_count"] == 2
     assert result["total_damage"] == 12
+    assert randint.call_count == 1
     assert team.current_morale == 6
     assert target_a.current_hp == target_a.max_hp - 6
     assert target_b.current_hp == target_b.max_hp - 6
     assert outside.current_hp == outside.max_hp
 
 
-def test_thunder_strike_no_damage_when_enemy_guess_succeeds():
+def test_thunder_strike_does_nothing_when_caster_guess_fails():
     xiahou_yueji, target_a, target_b, outside, team, enemy_team = build_enemy_block()
 
-    with patch("src.models.general.random.choice", return_value="even"), \
-            patch("src.models.general.random.randint", return_value=2):
-        result = team.use_skill(xiahou_yueji, [], BattleContext(team, enemy_team))
+    with patch("src.models.general.random.randint", return_value=2) as randint:
+        result = xiahou_yueji.use_active_skill(
+            [], BattleContext(team, enemy_team), team, guess="奇"
+        )
 
     assert result["success"] is True
+    assert result["judgment"]["success"] is False
+    assert result["triggered"] is False
     assert result["total_damage"] == 0
+    assert randint.call_count == 1
     assert target_a.current_hp == target_a.max_hp
     assert target_b.current_hp == target_b.max_hp
 
 
 if __name__ == "__main__":
     test_xiahou_yueji_data_and_skill()
-    test_thunder_strike_deals_damage_when_enemy_guess_fails()
-    test_thunder_strike_no_damage_when_enemy_guess_succeeds()
+    test_thunder_strike_deals_damage_when_caster_guess_succeeds_once()
+    test_thunder_strike_does_nothing_when_caster_guess_fails()
     print("夏侯月姬雷击测试通过")

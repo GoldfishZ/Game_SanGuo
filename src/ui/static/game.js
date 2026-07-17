@@ -403,18 +403,56 @@ function renderFormation() {
   var generals = r[teamKey] ? (r[teamKey].generals || []) : [];
   renderFormList(generals);
   renderFormGrid(generals);
+  renderFormationInspector(generals);
+}
+
+function formationRangeText(g) {
+  var rule = (typeof SKILL_RANGE_RULES !== "undefined" && SKILL_RANGE_RULES[g.skill_id]) || null;
+  if (!rule) return "技能范围：依技能说明";
+  return (rule.label || "技能范围：依技能说明").replace(/^技能：/, "技能范围：");
 }
 
 function renderFormList(generals) {
   var html = (generals || []).map(function(g) {
     var isActive = selectedFormGen && selectedFormGen.id === g.id;
+    var imgSrc = g.image ? "/generals/" + g.image : "";
+    var attrs = (g.attributes || []).map(function(a) { return '<span class="form-attr">' + a + '</span>'; }).join("");
     return '<div class="gi' + (isActive ? " active" : "") + '" onclick="selectFormGen(' + g.id + ')">' +
-      '<span style="font-weight:600">' + g.name + '</span>' +
-      '<span style="font-size:10px;color:var(--muted);margin-left:6px">' +
-      (g.row >= 0 ? "已放：第" + (g.col + 1) + "排 · " + ["前卫", "中坚", "后卫"][g.row] : "未放置") + '</span></div>';
+      (imgSrc ? '<img class="form-roster-portrait" src="' + imgSrc + '" alt="">' : '') +
+      '<div class="form-roster-copy"><div class="form-roster-line"><strong>' + g.name + '</strong>' +
+      '<span class="form-stats">武 ' + g.force + ' · 智 ' + g.intelligence + ' · HP ' + g.maxHp + '</span></div>' +
+      '<div class="form-skill-line"><b>' + (g.skill || "无主动技能") + '</b><span>士气 ' + (g.skill_cost || 0) + '</span></div>' +
+      '<div class="form-attr-line">' + (attrs || '<span class="form-attr muted">无特性</span>') + '</div>' +
+      '<small>' + (g.row >= 0 ? "已布：第" + (g.col + 1) + "战线 · " + ["前卫", "中坚", "后卫"][g.row] : "待命 · 点击后选择阵位") + '</small></div></div>';
   }).join("");
   document.getElementById("form-list").innerHTML = html ||
     '<div style="font-size:11px;color:var(--muted);padding:8px">无武将可选</div>';
+}
+
+function renderFormationInspector(generals) {
+  var el = document.getElementById("formation-inspector");
+  if (!el) return;
+  var g = selectedFormGen || (generals && generals[0]);
+  if (!g) { el.innerHTML = '<div class="formation-empty">暂无可用军情</div>'; return; }
+  var attrs = (g.attributes || []).map(function(a) { return '<span class="inspector-attr">' + a + '</span>'; }).join("");
+  var imgSrc = g.image ? "/generals/" + g.image : "";
+  el.innerHTML = '<div class="formation-panel-title"><span>军情</span><small>阵位研判</small></div>' +
+    '<div class="inspector-general">' + (imgSrc ? '<img src="' + imgSrc + '" alt="">' : '') +
+    '<div><h3>' + g.name + '</h3><p>' + (g.camp || "") + ' · 费用 ' + (g.cost || 0) + '</p></div></div>' +
+    '<div class="inspector-numbers"><span><b>' + g.force + '</b>武力</span><span><b>' + g.intelligence + '</b>智力</span><span><b>' + g.maxHp + '</b>生命</span></div>' +
+    '<div class="inspector-section"><label>主动技能 · 士气 ' + (g.skill_cost || 0) + '</label><strong>' + (g.skill || "无") + '</strong>' +
+    '<p>' + (g.skill_desc || "该武将没有主动技能。") + '</p><em>' + formationRangeText(g) + '</em></div>' +
+    '<div class="inspector-section"><label>武将特性</label><div class="inspector-attrs">' + (attrs || "无") + '</div></div>' +
+    '<div class="inspector-advice">' + formationAdvice(g) + '</div>';
+}
+
+function formationAdvice(g) {
+  var desc = g.skill_desc || "";
+  var attrs = g.attributes || [];
+  if (/一竖列|竖列/.test(desc)) return "阵位建议：与需要同列协同或覆盖的武将排在同一视觉竖列。";
+  if (attrs.indexOf("防栅") >= 0 || g.force >= g.intelligence + 2) return "阵位建议：适合置于前卫，承接敌军普攻并保护身后武将。";
+  if (g.intelligence > g.force) return "阵位建议：优先置于中坚或后卫，保存兵力以持续发动技能。";
+  return "阵位建议：根据敌军前卫分布，选择能集中火力的战线。";
 }
 
 function renderFormGrid(generals) {
@@ -430,7 +468,9 @@ function renderFormGrid(generals) {
       var visual = formationVisualPosition(isP1, r, c);
       var style = ' style="grid-row:' + visual.row + ';grid-column:' + visual.col + '"';
       if (g) {
-        html += '<div class="form-cell filled"' + style + ' onclick="placeGeneral(' + r + ',' + c + ')">' + g.name + '</div>';
+        html += '<div class="form-cell filled"' + style + ' onclick="placeGeneral(' + r + ',' + c + ')">' +
+          (g.image ? '<img src="/generals/' + g.image + '" alt="">' : '') + '<span>' + g.name + '</span>' +
+          '<small>武' + g.force + ' 智' + g.intelligence + '</small></div>';
       } else {
         html += '<div class="form-cell' + (selectedFormGen ? " droptarget" : "") + '"' + style + ' onclick="placeGeneral(' + r + ',' + c + ')">+</div>';
       }
@@ -454,6 +494,7 @@ function selectFormGen(id) {
   if (!selectedFormGen) return;
   renderFormList(generals);
   renderFormGrid(generals);
+  renderFormationInspector(generals);
 }
 
 function placeGeneral(r, c) {
@@ -468,6 +509,7 @@ function placeGeneral(r, c) {
   selectedFormGen.col = c;
   renderFormList(generals);
   renderFormGrid(generals);
+  renderFormationInspector(generals);
 }
 
 function confirmFormation() {
@@ -843,10 +885,37 @@ function buildBcellHTML(g, r, c, gridRow, gridColumn, isAlly) {
   if (attrs.indexOf("伏兵") >= 0) {
     cls.push(g._ambushTriggered ? "ambush-triggered" : (g._ambushHidden ? "ambush-hidden" : "ambush-revealed"));
   }
+  if ((g.buffs || []).length) cls.push("has-persistent-buff");
+  if ((g.debuffs || []).length) cls.push("has-persistent-debuff");
 
   var effForce = g.effective_force !== undefined ? g.effective_force : (g.force || 0);
   var effIntel = g.effective_intelligence !== undefined ? g.effective_intelligence : (g.intelligence || 0);
   var attrStr = attrs.join(" · ") || "无属性";
+  var shield = (g.buffs || []).find(function(effect) { return effect.type === "damage_shield"; });
+  var statusHtml = '<div class="trait-ribbon">' + attrs.map(function(attr) {
+    var icon = {"勇猛":"勇", "魅力":"魅", "募兵":"募", "防栅":"栅", "连计":"连", "复活":"生", "伏兵":"伏"}[attr] || attr.charAt(0);
+    return '<span class="trait-mark trait-' + attr + '" title="' + attr + '">' + icon + '</span>';
+  }).join("") + '</div>';
+  if (g._fenceActive) statusHtml += '<div class="passive-fence" aria-label="防栅尚未被攻破"><i></i><i></i><i></i></div>';
+  if (shield) statusHtml += '<div class="damage-shield" aria-label="护盾可吸收' + shield.value + '点伤害"><span>盾</span><b>' + shield.value + '</b></div>';
+  if (attrs.indexOf("连计") >= 0) statusHtml += '<div class="chain-link" aria-hidden="true"></div>';
+  if (g._ambushHidden) statusHtml += '<div class="ambush-veil" aria-label="伏兵隐藏中">伏</div>';
+  var effectNames = {
+    force_boost:"武+", intelligence_boost:"智+", force_reduction:"武-", intelligence_reduction:"智-",
+    debuff_immunity:"免疫", attack_speed_judgment:"神速", attack_speed_required:"迟滞",
+    front_only_attack:"攻城", ignore_fence:"破栅", knockback_on_damage:"击退",
+    forced_attack_target:"挑衅", poison:"中毒"
+  };
+  var persistentEffects = (g.buffs || []).filter(function(effect) { return effect.type !== "damage_shield"; }).map(function(effect) {
+    return {kind:"buff", type:effect.type, value:effect.value, duration:effect.duration};
+  }).concat((g.debuffs || []).map(function(effect) {
+    return {kind:"debuff", type:effect.type, value:effect.value, duration:effect.duration};
+  }));
+  if (persistentEffects.length) statusHtml += '<div class="persistent-status-stack">' + persistentEffects.map(function(effect) {
+    var label = effectNames[effect.type] || (effect.kind === "buff" ? "增益" : "减益");
+    var value = typeof effect.value === "number" && effect.value !== 1 ? effect.value : "";
+    return '<span class="persistent-status ' + effect.kind + '" title="' + effect.type + '，剩余' + effect.duration + '回合">' + label + value + '<i>' + effect.duration + '</i></span>';
+  }).join("") + '</div>';
 
   return '<div class="' + cls.join(" ") + '"' +
     ' data-name="' + g.name + '" data-id="' + g.id + '" data-row="' + r + '" data-col="' + c + '"' +
@@ -859,6 +928,7 @@ function buildBcellHTML(g, r, c, gridRow, gridColumn, isAlly) {
     (g.skill_desc || "") + '<br>属性：' + attrStr + '"' +
     ' style="grid-row:' + gridRow + ';grid-column:' + gridColumn + '">' +
     (imgSrc ? '<img src="' + imgSrc + '">' : "") +
+    statusHtml +
     '<div class="bcell-tip"><img src="' + (imgSrc || "") + '"><div class="tip-name">' + g.name +
     '</div><div class="tip-stat">武' + effForce + ' 智' + effIntel + ' | ' + (g.skill || "无") +
     '</div><div class="tip-attr">' + attrStr + '</div></div>' +
@@ -1018,6 +1088,7 @@ async function onBattleEnemyCell(r, c) {
   var attackResult = result.attack_result;
   if (attackResult && attackResult.performed && aCell && tCell) {
     await animAttack(aCell, tCell, attackResult.damage || 0, attackResult.target_hp_after <= 0);
+    await playCombatEvents(attackResult.events || []);
   }
 
   clearBattleSelection();
@@ -1057,7 +1128,7 @@ async function useSkill() {
   if (castOptions === null) return;
   var guess = null;
   if (skillId === "thunder_strike") {
-    guess = await askOddEven("雷击判定——目标猜中则避开伤害，猜错则受到雷击");
+    guess = await askOddEven("雷击判定——由夏侯月姬猜奇偶；猜对则在选定2×2区域落雷，猜错则无事发生");
     if (!guess) return;
   }
 
@@ -1089,7 +1160,8 @@ async function useSkill() {
   }
   setStatus(result.event || (sk + " 已使用"));
   if (result.skill_result && result.skill_result.success) {
-    await playSkillResolution(result.skill_result, sk, skillType);
+    await playSkillResolution(result.skill_result, sk, skillType, skillId);
+    await playCombatEvents(result.combat_events || []);
   } else {
     BattleAudio.play("failure");
   }
@@ -1120,13 +1192,56 @@ function detailVisualKind(detail, result, fallback) {
   return "buff";
 }
 
-async function playSkillResolution(skillResult, skillName, fallbackKind) {
+async function playSkillResolution(skillResult, skillName, fallbackKind, skillId) {
   if (window.__stressMode) return;
   var details = skillResult.details || [];
   var sounded = {};
   if (!details.length) {
     BattleAudio.play(skillResult.success ? (fallbackKind || "command") : "failure");
     return sleep(180);
+  }
+  if (skillId === "thunder_strike") {
+    var thunderJudgment = Object.assign({}, skillResult.judgment || (details[0] && details[0].judgment) || {}, {
+      title: "雷击判定",
+      message: skillResult.triggered ? "判定成功，天雷将至" : "判定失败，雷击未能发动"
+    });
+    await showSpeedJudgment(thunderJudgment);
+    if (!skillResult.triggered) {
+      BattleAudio.play("failure");
+      await sleep(280);
+      return;
+    }
+    for (var thunderIndex = 0; thunderIndex < details.length; thunderIndex++) {
+      var thunderDetail = details[thunderIndex];
+      var thunderCell = findBattleCellByName(thunderDetail.target);
+      if (!thunderCell) continue;
+      var thunderCenter = getCellCenter(thunderCell);
+      FX.lightningStrike(thunderCenter.x, thunderCenter.y);
+      BattleAudio.play("lightning");
+      await sleep(220);
+      thunderCell.classList.add("resolve-lightning");
+      await sleep(100);
+      spawnFloatNum(thunderCell, thunderDetail.damage, "damage");
+      await sleep(420);
+      thunderCell.classList.remove("resolve-lightning");
+    }
+    return;
+  }
+  if (skillId === "meteor_rite") {
+    for (var meteorIndex = 0; meteorIndex < details.length; meteorIndex++) {
+      var meteorDetail = details[meteorIndex];
+      var meteorCell = findBattleCellByName(meteorDetail.target);
+      if (!meteorCell) continue;
+      var meteorCenter = getCellCenter(meteorCell);
+      FX.meteorStrike(meteorCenter.x, meteorCenter.y);
+      BattleAudio.play("fire");
+      await sleep(300);
+      meteorCell.classList.add("resolve-damage");
+      spawnFloatNum(meteorCell, meteorDetail.damage || 0, "damage");
+      await sleep(240);
+      meteorCell.classList.remove("resolve-damage");
+    }
+    return;
   }
   details.forEach(function(detail) {
     var cell = findBattleCellByName(detail.target);
@@ -1154,6 +1269,46 @@ async function playSkillResolution(skillResult, skillName, fallbackKind) {
   await sleep(680);
 }
 
+async function playCombatEvents(events) {
+  if (window.__stressMode || !events || !events.length) return;
+  for (var i = 0; i < events.length; i++) {
+    var event = events[i];
+    var cell = document.querySelector('#scr-battle .bcell[data-id="' + event.general_id + '"]');
+    if (!cell) continue;
+    var center = getCellCenter(cell);
+    if (event.type === "fence_block") {
+      cell.classList.add("fence-breaking"); spawnSkillLabel(cell, "破栅"); BattleAudio.play("block");
+    } else if (event.type === "shield_absorb") {
+      cell.classList.add("shield-impact"); spawnSkillLabel(cell, "护盾 -" + event.absorbed); BattleAudio.play("block");
+    } else if (event.type === "recruit_heal") {
+      cell.classList.add("recruit-trigger"); FX.healSparkles(center.x, center.y); spawnFloatNum(cell, -event.amount, "heal"); BattleAudio.play("heal");
+    } else if (event.type === "bravery_judgment") {
+      cell.classList.add("bravery-trigger"); spawnSkillLabel(cell, event.bonus > 0 ? "勇猛 +" + event.bonus : "勇猛");
+    } else if (event.type === "charisma_judgment") {
+      cell.classList.add("charisma-trigger"); spawnSkillLabel(cell, event.reflected > 0 ? "魅力反噬" : "魅力判定");
+    } else if (event.type === "chain_share") {
+      cell.classList.add("chain-trigger"); FX.burst(center.x, center.y, "#b59b62", 14, 2.2); spawnSkillLabel(cell, "连计分伤");
+    } else if (event.type === "revive") {
+      cell.classList.add("revive-trigger"); FX.healSparkles(center.x, center.y); spawnSkillLabel(cell, "再起 · " + event.hp + " HP"); BattleAudio.play("success");
+    } else if (event.type === "ambush_counter") {
+      cell.classList.add("ambush-trigger-fx"); FX.debuffMiasma(center.x, center.y); spawnSkillLabel(cell, "伏兵反击 -" + event.damage); BattleAudio.play("impact");
+    }
+    await sleep(520);
+    cell.classList.remove("fence-breaking", "shield-impact", "recruit-trigger", "bravery-trigger", "charisma-trigger", "chain-trigger", "revive-trigger", "ambush-trigger-fx");
+  }
+}
+
+async function playTurnEvents(events) {
+  if (window.__stressMode || !events) return;
+  var morale = events.find(function(event) { return event.type === "morale_restore"; });
+  if (morale && morale.amount > 0) {
+    var header = document.querySelector(morale.team === "p1" ? "#bside1 .morale-inline" : "#bside2 .morale-inline");
+    if (header) { spawnSkillLabel(header, "士气 +" + morale.amount); BattleAudio.play("morale"); }
+    await sleep(460);
+  }
+  await playCombatEvents(events.filter(function(event) { return event.type !== "morale_restore"; }));
+}
+
 /** 跳过当前阶段/回合 */
 function skipPhase() {
   if (battlePhase === "target") {
@@ -1161,7 +1316,8 @@ function skipPhase() {
     return renderBattle();
   }
   clearBattleSelection();
-  return call("/battle/skip").then(function() {
+  return call("/battle/skip").then(async function(result) {
+    await playTurnEvents((result && result.turn_events) || []);
     if (G && G.phase === "over") { showGameOver(); return; }
     return renderBattle();
   });
@@ -1202,7 +1358,7 @@ function showSpeedJudgment(judgment) {
     overlay.className = "speed-judgment-overlay";
     overlay.innerHTML =
       '<div class="speed-judgment-panel">' +
-      '<div class="speed-title">攻速判定</div>' +
+      '<div class="speed-title">' + (judgment.title || "攻速判定") + '</div>' +
       '<div class="speed-choice">你选择了 <strong>' + (judgment.guess === "odd" ? "奇" : "偶") + '</strong></div>' +
       '<div class="speed-die rolling">⚀</div>' +
       '<div class="speed-points">正在掷骰……</div>' +
@@ -1687,6 +1843,14 @@ function quitToMenu() {
       for (var j = 0; j < 10; j++) {
         particles.push({ type: "glow", x: x + (Math.random() - 0.5) * 40, y: y + (Math.random() - 0.5) * 40, vx: 0, vy: 0, life: 0.6 + Math.random() * 0.4, color: "#ffffc0", size: 6 + Math.random() * 8, alpha: 0.5 });
       }
+    },
+    meteorStrike: function(x, y) {
+      var projectile = document.createElement("div");
+      projectile.className = "meteor-projectile";
+      projectile.style.left = x + "px";
+      projectile.style.top = y + "px";
+      document.body.appendChild(projectile);
+      setTimeout(function() { projectile.remove(); FX.fireBurst(x, y); FX.screenShake(); }, 270);
     },
     slashTrail: function(x1, y1, x2, y2) {
       var angle = Math.atan2(y2 - y1, x2 - x1);

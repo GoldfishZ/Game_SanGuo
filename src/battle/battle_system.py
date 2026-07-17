@@ -428,9 +428,17 @@ class BattleSystem:
         self.current_side = self._get_enemy_team()
 
     def _end_turn_cleanup(self):
-        """回合结束清理临时阵型等效果。"""
+        """回合结束清理临时效果，并为结束行动的一方恢复 2 点士气。"""
         self.team1.revert_temporary_formations()
         self.team2.revert_temporary_formations()
+        gained = self.current_side.gain_morale(2)
+        return {
+            "type": "morale_restore",
+            "team_name": self.current_side.team_name,
+            "amount": gained,
+            "morale": self.current_side.current_morale,
+            "max_morale": self.current_side.max_morale,
+        }
 
     def _is_game_over(self) -> bool:
         """检查战斗是否结束"""
