@@ -7,7 +7,7 @@
 - **episode**：一局战斗。
 - **PPO update**：收集一批 rollout steps 后的一次策略更新。
 
-`--max-updates` 限制 PPO update 数，`--rollout-steps` 限制每个 update 的学习方子动作数。训练还有 wall-clock、目标胜率和平台期早停保护，不会自动无限执行。
+`--max-updates` 限制 PPO update 数，`--rollout-steps` 限制每个 update 的学习方子动作数。训练还有 wall-clock、目标胜率和平台期早停保护，不会自动无限执行。固定评估额外受 `--eval-max-steps`（单局）和 `--eval-max-seconds`（整次评估）保护；超限局记为 timeout/draw，避免确定性策略卡在无进展动作时阻塞训练。
 
 ## 环境检查
 

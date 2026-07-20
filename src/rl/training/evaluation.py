@@ -1,46 +1,73 @@
-"""固定 seed 的策略评估。"""
+"""固定 seed 的策略评估，并对病态策略提供有限时长保护。"""
 from __future__ import annotations
+
+import time
 
 from src.rl.env import SanguoEnv
 from src.rl.evaluation.strength import GeneralStrengthTracker
 from src.rl.policy import TorchPolicy
 
 
-def evaluate(model, device, opponent, *, episodes=64, seed_base=20260800):
-    policy = TorchPolicy(model, device=device, deterministic=True)
+def evaluate(model, device, opponent, *, episodes=64, seed_base=20260800,
+             max_steps_per_episode=4096, max_seconds=300, policy=None):
+    """评估确定性策略。
+
+    非推进策略可能重复选择同一动作，因此每局和整次评估都必须有硬上限。
+    超限局记为 timeout/draw，永远不计入胜利。
+    """
+    policy = policy or TorchPolicy(model, device=device, deterministic=True)
     tracker = GeneralStrengthTracker()
-    wins = losses = draws = 0
+    wins = losses = draws = timeouts = 0
     turns = []
     steps = []
+    deadline = time.monotonic() + max_seconds
+
     for offset in range(episodes):
+        if time.monotonic() >= deadline:
+            # 未启动的剩余局同样按 timeout 处理，保证结果总数可解释。
+            timeouts += episodes - offset
+            draws += episodes - offset
+            break
         env = SanguoEnv(opponent)
         observation, info = env.reset(seed_base + offset)
         done = False
         count = 0
         damage = {}
-        while not done:
+        while not done and count < max_steps_per_episode and time.monotonic() < deadline:
             action = policy.select_action(observation, info["action_mask"], env.rng)
             observation, _, done, info = env.step(action)
             result = info.get("result") or {}
             if result.get("success") and result.get("attacker_id") is not None:
                 damage[result["attacker_id"]] = damage.get(result["attacker_id"], 0.0) + result.get("damage", 0.0)
             count += 1
-        winner = env.battle_system._determine_winner()
-        if env.battle_system.turn_count >= env.battle_system.max_turns:
+
+        timed_out = not done
+        if timed_out:
+            timeouts += 1
             draws += 1
-        elif winner == env.learning_team.team_name:
-            wins += 1
+            # 仍保留局面统计，但不给任何一方虚假胜利。
+            tracker.record_episode(env.learning_team, env.enemy_team, "", damage)
         else:
-            losses += 1
-        tracker.record_episode(env.learning_team, env.enemy_team, winner, damage)
+            winner = env.battle_system._determine_winner()
+            if env.battle_system.turn_count >= env.battle_system.max_turns:
+                draws += 1
+            elif winner == env.learning_team.team_name:
+                wins += 1
+            else:
+                losses += 1
+            tracker.record_episode(env.learning_team, env.enemy_team, winner, damage)
         turns.append(env.battle_system.turn_count)
         steps.append(count)
+
+    completed = len(steps)
     return {
         "win_rate": wins / episodes,
         "loss_rate": losses / episodes,
         "draw_rate": draws / episodes,
-        "mean_turns": sum(turns) / episodes,
-        "mean_steps": sum(steps) / episodes,
+        "timeout_rate": timeouts / episodes,
+        "mean_turns": sum(turns) / max(1, completed),
+        "mean_steps": sum(steps) / max(1, completed),
+        "evaluated_episodes": completed,
         "general": tracker.snapshot(),
         "balance": tracker.balance_metrics(),
     }

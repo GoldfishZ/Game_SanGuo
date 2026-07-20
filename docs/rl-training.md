@@ -62,7 +62,11 @@
 - `--max-wallclock-minutes`：最多总运行分钟数，默认 `480`（8 小时）；
 - `--target-winrate`：固定验证对手胜率达到目标时结束，默认 `0.85`；
 - `--patience` / `--min-delta`：多次评估未产生有效提升时平台期停止，默认 `10` 次、提升阈值 `0.01`；
+- `--eval-max-steps`：每局固定评估最多执行的子动作数，默认 `4096`；
+- `--eval-max-seconds`：一整次固定评估的最长时长，默认 `300` 秒；
 - Ctrl+C：保存 latest checkpoint 后退出。
+
+评估若碰到确定性策略重复无进展动作，会在上述限制处中止该局并计为 timeout/draw；timeout 永远不会被当作胜利。
 
 `--target-kl 0.015` 是 **PPO 单次 update 内部**的保护：当近似 KL 过大时，它会提前结束该次 update 的剩余 epoch/minibatch，**不会结束整个训练任务**。
 

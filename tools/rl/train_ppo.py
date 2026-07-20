@@ -125,6 +125,8 @@ def main():
     parser.add_argument("--max-wallclock-minutes", type=float, default=480)
     parser.add_argument("--eval-every", type=int, default=20)
     parser.add_argument("--eval-episodes", type=int, default=64)
+    parser.add_argument("--eval-max-steps", type=int, default=4096)
+    parser.add_argument("--eval-max-seconds", type=float, default=300)
     parser.add_argument("--checkpoint-every", type=int, default=20)
     parser.add_argument("--keep-last", type=int, default=5)
     parser.add_argument("--target-winrate", type=float, default=0.85)
@@ -176,7 +178,12 @@ def main():
             is_best = False
             stop_reason = None
             if update % args.eval_every == 0:
-                validation = evaluate(model, profile.device, HeuristicOpponent(), episodes=args.eval_episodes)
+                validation = evaluate(
+                    model, profile.device, HeuristicOpponent(),
+                    episodes=args.eval_episodes,
+                    max_steps_per_episode=args.eval_max_steps,
+                    max_seconds=args.eval_max_seconds,
+                )
                 logger.log(update, {key: value for key, value in validation.items() if isinstance(value, (int, float))}, "eval/heuristic")
                 logger.log(update, validation["balance"], "eval_balance")
                 is_best, stop, reason = convergence.update(validation["win_rate"])

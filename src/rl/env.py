@@ -178,7 +178,9 @@ class SanguoEnv:
         # same action encoder and opponent policy work for either physical team.
         self.learning_team, self.enemy_team = self.enemy_team, self.learning_team
         self.subphase = "skill"
-        guard = self.action_size * 2
+        # 对手策略若持续选择无进展动作，必须有小而明确的回合上限。
+        # 耗尽后仍会在下方 advance_turn，保证战斗回合能够推进。
+        guard = 64
         while guard and not self.battle_system._is_game_over():
             guard -= 1
             action_id = self.opponent.choose_action(self)
