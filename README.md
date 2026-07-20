@@ -52,20 +52,31 @@ Game_SanGuo/
 │   ├── battle/              战斗流程
 │   ├── game_data/           武将、技能与生平数据
 │   ├── models/              General、Team、GameFlow 等模型
+│   ├── rl/                  本地 PPO 环境、训练与武将评估
 │   ├── skills/              技能基类
 │   ├── ui/                  CLI/Pygame 界面
 │   ├── web/                 Web 服务、桌面启动器与静态前端
 │   └── paths.py             统一项目资源路径
 ├── assets/images/           武将卡和背景资源
-├── docs/                    架构、流程与打包文档
+├── docs/                    架构、流程、打包与 RL 训练文档
 ├── requirements/            分组构建依赖
 ├── tests/                   自动化测试
 └── tools/
     ├── assets/              图片处理工具
     ├── build/               Windows 打包脚本
     ├── maintenance/         历史维护脚本
-    └── testing/             单测、模拟与浏览器压力测试
+    ├── testing/             单测、模拟与浏览器压力测试
+    └── rl/                  PPO 训练、评估与强度报告工具
 ```
+
+## 本地 AI 训练
+
+本地 PPO 训练、TensorBoard、checkpoint 恢复和武将强度评估见：
+
+- [`docs/rl-training.md`](docs/rl-training.md)：完整训练系统说明；
+- [`docs/rl-training-windows.md`](docs/rl-training-windows.md)：Windows/CUDA 启动手册。
+
+训练模型尚未接入网页 PvE。
 
 ## 常用开发命令
 

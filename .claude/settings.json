@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git commit -m 'refactor: 项目结构重组——模块化分层与入口精简 *)",
+      "Bash(git check-ignore *)",
+      "Bash(echo \"exit: $?\")"
+    ]
+  }
+}

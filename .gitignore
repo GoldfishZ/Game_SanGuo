@@ -1,12 +1,15 @@
-DEVELOPMENT_GUIDE.md
 __pycache__/
 *.py[cod]
 .pytest_cache/
-AGENTS.md
-CLAUDE.md
 *.pdf
 /design-demos/
 /artifacts/
 /build/
 /dist/
 *.spec
+
+# Claude Code：共享配置提交，本地权限和临时工作目录不提交。
+.claude/settings.local.json
+.claude/worktrees/
+.claude/plans/
+.agents/

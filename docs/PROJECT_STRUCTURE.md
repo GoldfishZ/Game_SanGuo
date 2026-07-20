@@ -16,6 +16,7 @@
 - `src/battle/`：战斗回合编排和战斗上下文。
 - `src/game_data/`：武将、技能、被动、生平与查询接口。
 - `src/models/`：武将、队伍、游戏流程等领域模型。
+- `src/rl/`：本地离线 PPO 环境、模型、训练、评估与武将强度分析。
 - `src/skills/`：技能抽象基类。
 - `src/ui/`：CLI 回调和旧 Pygame 界面。
 - `src/web/`：HTTP 服务、桌面启动器和浏览器静态资源。
@@ -27,10 +28,11 @@
 - `tools/build/`：Windows 发行包构建。
 - `tools/assets/`：图片转换和资源优化。
 - `tools/maintenance/`：已经应用过但仍保留备查的一次性维护脚本。
+- `tools/rl/`：PPO 训练、离线评估、强度报告和训练配置。
 
 ## 依赖与产物
 
-- `requirements.txt`：CLI/Pygame 和测试环境依赖。
+- `requirements.txt`：游戏、测试和本地 RL 训练依赖。
 - `requirements/build.txt`：发行包构建依赖。
 - `assets/`：源图片及 WebP 运行图片。
 - `artifacts/`：测试报告和截图，不进入版本控制。
