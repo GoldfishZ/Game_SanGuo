@@ -413,6 +413,10 @@ class BattleSystem:
     def _get_attack_targets_for_attacker(self, attacker: General) -> List[General]:
         """根据攻击者状态获取合法普攻目标。"""
         enemy_team = self._get_enemy_team()
+        forced_target = attacker.get_forced_attack_target()
+        if forced_target is not None and forced_target in enemy_team.get_alive_generals():
+            return [forced_target]
+
         if not attacker.has_buff_type("front_only_attack"):
             return enemy_team.get_attackable_targets()
 

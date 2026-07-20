@@ -56,10 +56,15 @@ def test_cavalry_unity_grants_force_and_one_double_attack_judgment():
             patch("src.models.general.random.randint", return_value=4):
         damage = zhang_liao.attack(target)
 
-    assert damage == 10
-    assert target.current_hp == target.max_hp - 10
+    assert damage == 5
+    assert target.current_hp == target.max_hp - 5
     assert not zhang_liao.has_buff_type("attack_speed_judgment")
     assert zhang_liao.last_attack_speed_judgment["success"] is True
+    assert zhang_liao.can_attack()
+
+    assert zhang_liao.attack(target) == 5
+    assert target.current_hp == target.max_hp - 10
+    assert not zhang_liao.can_attack()
 
 
 if __name__ == "__main__":

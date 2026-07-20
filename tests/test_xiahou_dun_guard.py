@@ -56,10 +56,15 @@ def test_wei_king_guard_grants_force_and_one_double_attack_judgment():
             patch("src.models.general.random.randint", return_value=3):
         damage = xiahou_dun.attack(target)
 
-    assert damage == 12
-    assert target.current_hp == target.max_hp - 12
+    assert damage == 6
+    assert target.current_hp == target.max_hp - 6
     assert not xiahou_dun.has_buff_type("attack_speed_judgment")
     assert xiahou_dun.last_attack_speed_judgment["success"] is True
+    assert xiahou_dun.can_attack()
+
+    assert xiahou_dun.attack(target) == 6
+    assert target.current_hp == target.max_hp - 12
+    assert not xiahou_dun.can_attack()
 
 
 def test_xiahou_dun_passively_shares_cao_cao_damage():

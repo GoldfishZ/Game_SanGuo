@@ -59,9 +59,14 @@ def test_flawless_speed_mode_grants_force_and_attack_speed_judgment():
             patch("src.models.general.random.randint", return_value=3):
         damage = taishi_ci.attack(target)
 
-    assert damage == 12
-    assert target.current_hp == target.max_hp - 12
+    assert damage == 6
+    assert target.current_hp == target.max_hp - 6
     assert taishi_ci.last_attack_speed_judgment["success"] is True
+    assert taishi_ci.can_attack()
+
+    assert taishi_ci.attack(target) == 6
+    assert target.current_hp == target.max_hp - 12
+    assert not taishi_ci.can_attack()
 
 
 def test_flawless_saved_mode_can_activate_on_future_turn():

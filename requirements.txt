@@ -1,3 +1,6 @@
 pygame>=2.1.0
 pytest>=7.0.0
 numpy>=1.21.0
+torch>=2.0.0  # 本地离线 PPO 训练（按 CUDA 环境选择对应 PyTorch 安装包）
+tensorboard>=2.13.0
+pyyaml>=6.0

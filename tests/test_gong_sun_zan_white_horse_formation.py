@@ -89,10 +89,15 @@ def test_white_horse_formation_attack_speed_can_double_attack():
             patch("src.models.general.random.randint", return_value=3):
         damage = gong_sun_zan.attack(target)
 
-    assert damage == 2
-    assert target.current_hp == target.max_hp - 2
+    assert damage == 1
+    assert target.current_hp == target.max_hp - 1
     assert not gong_sun_zan.has_buff_type("attack_speed_judgment")
     assert gong_sun_zan.last_attack_speed_judgment["success"] is True
+    assert gong_sun_zan.can_attack()
+
+    assert gong_sun_zan.attack(target) == 1
+    assert target.current_hp == target.max_hp - 2
+    assert not gong_sun_zan.can_attack()
 
 
 if __name__ == "__main__":

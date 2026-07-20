@@ -58,10 +58,16 @@ def test_divine_speed_grants_force_and_attack_speed_judgment():
             patch("src.models.general.random.randint", return_value=4):
         damage = xiahou_yuan.attack(target)
 
-    assert damage == 10
-    assert target.current_hp == target.max_hp - 10
+    assert damage == 5
+    assert target.current_hp == target.max_hp - 5
     assert not xiahou_yuan.has_buff_type("attack_speed_judgment")
     assert xiahou_yuan.last_attack_speed_judgment["success"] is True
+    assert xiahou_yuan.can_attack()
+
+    second_damage = xiahou_yuan.attack(target)
+    assert second_damage == 5
+    assert target.current_hp == target.max_hp - 10
+    assert not xiahou_yuan.can_attack()
 
 
 if __name__ == "__main__":

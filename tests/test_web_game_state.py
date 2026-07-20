@@ -323,7 +323,17 @@ def test_web_attack_returns_successful_speed_judgment_for_animation():
     }
     assert state["attack_result"]["performed"] is True
     assert state["attack_result"]["damage"] == hp_before - target.current_hp
-    assert "掷出3点（奇），成功" in state["event"]
+    assert state["p1"]["generals"][0]["_hasExtraAttack"] is True
+    assert "可重新选择目标的追加普攻" in state["event"]
+
+    state = post("/api/battle/attack", {
+        "attacker_id": attacker.general_id,
+        "target_id": target.general_id,
+    })
+
+    assert state["attack_result"]["performed"] is True
+    assert state["p1"]["generals"][0]["_hasExtraAttack"] is False
+    assert state["p1"]["generals"][0]["_hasAttacked"] is True
 
 
 def test_web_failed_required_speed_judgment_cancels_attack():

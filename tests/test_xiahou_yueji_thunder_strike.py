@@ -70,11 +70,57 @@ def test_thunder_strike_deals_damage_when_caster_guess_succeeds_once():
     assert result["triggered"] is True
     assert result["strike_count"] == 2
     assert result["total_damage"] == 12
+    assert result["targets_hit"] == 2
+    assert result["details"][0]["bolts"] == 2
+    assert result["details"][0]["damage_per_bolt"] == 3
     assert randint.call_count == 1
     assert team.current_morale == 6
     assert target_a.current_hp == target_a.max_hp - 6
     assert target_b.current_hp == target_b.max_hp - 6
     assert outside.current_hp == outside.max_hp
+
+
+def test_thunder_strike_hits_every_enemy_in_selected_2x2():
+    xiahou_yueji, target_a, target_b, outside, team, enemy_team = build_enemy_block()
+    target_c = make_enemy("雷击目标C", 4)
+    enemy_team.add_general(target_c)
+    enemy_team.position_general(target_c, 1, 0)
+    context = BattleContext(team, enemy_team)
+    context.skill_options = {"row": 0, "col": 0}
+
+    with patch("src.models.general.random.randint", return_value=2) as randint:
+        result = xiahou_yueji.use_active_skill([], context, team, guess="偶")
+
+    assert result["targets_hit"] == 3
+    assert len(result["details"]) == 3
+    assert result["total_damage"] == 18
+    assert randint.call_count == 1
+    for target in (target_a, target_b, target_c):
+        assert target.current_hp == target.max_hp - 6
+    assert outside.current_hp == outside.max_hp
+
+
+def test_thunder_strike_has_two_damage_floor_against_higher_intelligence():
+    xiahou_yueji = get_general_by_name("夏侯月姬")
+    equal_target = make_enemy("同智目标", 7)
+    higher_target = make_enemy("高智目标", 10)
+    team = Team("蜀军")
+    enemy_team = Team("敌队")
+    team.add_general(xiahou_yueji)
+    for col, target in enumerate((equal_target, higher_target)):
+        enemy_team.add_general(target)
+        enemy_team.position_general(target, 0, col)
+    context = BattleContext(team, enemy_team)
+    context.skill_options = {"row": 0, "col": 0}
+
+    with patch("src.models.general.random.randint", return_value=2):
+        result = xiahou_yueji.use_active_skill([], context, team, guess="偶")
+
+    assert result["total_damage"] == 4
+    for detail, target in zip(result["details"], (equal_target, higher_target)):
+        assert detail["damage_per_bolt"] == 1
+        assert detail["damage"] == 2
+        assert target.current_hp == target.max_hp - 2
 
 
 def test_thunder_strike_does_nothing_when_caster_guess_fails():

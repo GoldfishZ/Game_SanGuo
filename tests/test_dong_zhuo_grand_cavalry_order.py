@@ -92,10 +92,15 @@ def test_grand_cavalry_order_attack_speed_judgment_can_double_attack():
             patch("src.models.general.random.randint", return_value=3):
         damage = dong_zhuo.attack(target)
 
-    assert damage == 14
-    assert target.current_hp == target.max_hp - 14
+    assert damage == 7
+    assert target.current_hp == target.max_hp - 7
     assert not dong_zhuo.has_buff_type("attack_speed_judgment")
     assert dong_zhuo.last_attack_speed_judgment["success"] is True
+    assert dong_zhuo.can_attack()
+
+    assert dong_zhuo.attack(target) == 7
+    assert target.current_hp == target.max_hp - 14
+    assert not dong_zhuo.can_attack()
 
 
 if __name__ == "__main__":

@@ -128,9 +128,13 @@
   }
 
   function cleanupTransientDom() {
-    document.querySelectorAll(".speed-judgment-overlay,.skill-area-overlay,.skill-option-overlay,.float-num,.skill-burst,#stress-status").forEach(function(node) {
+    document.querySelectorAll(".speed-judgment-overlay,.skill-area-overlay,.skill-option-overlay,.general-closeup-overlay,.float-num,.skill-burst,#stress-status").forEach(function(node) {
       if (node.id !== "stress-status") node.remove();
     });
+    var cinematic = document.getElementById("skill-cinematic");
+    if (cinematic) { cinematic.classList.remove("active"); cinematic.removeAttribute("data-camp"); cinematic.innerHTML = ""; }
+    var battle = document.getElementById("scr-battle");
+    if (battle) battle.classList.remove("battle-cinematic-focus");
     if (window.FX && FX.clear) FX.clear();
     window.selectedAttacker = null;
     window.battlePhase = "select";

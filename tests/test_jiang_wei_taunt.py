@@ -8,7 +8,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.game_data.generals_config import get_general_by_name
-from src.battle.battle_system import BattleContext
+from src.battle.battle_system import BattleContext, BattleSystem
 from src.models.general import Camp, General, Rarity
 from src.models.team import Team
 
@@ -94,6 +94,35 @@ def test_taunt_forces_2x2_enemies_to_attack_jiang_wei():
     assert blocked_damage == 0
     damage = enemies[0].attack(jiang_wei)
     assert damage > 0
+
+
+def test_taunt_survives_enemy_turn_start_and_expires_on_next_jiang_wei_turn():
+    jiang_wei, ally, enemies, team, enemy_team = build_grid()
+    context = BattleContext(team, enemy_team)
+    context.skill_options = {"row": 0, "col": 0}
+    team.use_skill(jiang_wei, [], context)
+
+    enemy_team.update_effects()
+    assert enemies[0].get_forced_attack_target() is jiang_wei
+
+    enemy_team.update_effects()
+    assert enemies[0].get_forced_attack_target() is None
+
+
+def test_taunt_makes_jiang_wei_the_only_attack_target_even_from_rear():
+    jiang_wei, ally, enemies, team, enemy_team = build_grid()
+    team.position_general(jiang_wei, 2, 0)
+    context = BattleContext(team, enemy_team)
+    context.skill_options = {"row": 0, "col": 0}
+    team.use_skill(jiang_wei, [], context)
+
+    battle = BattleSystem(
+        enemy_team, team, callbacks=None,
+        first_player_team_name=enemy_team.team_name,
+    )
+    assert battle._get_attack_targets_for_attacker(enemies[0]) == [jiang_wei]
+    assert enemies[0].attack(ally) == 0
+    assert enemies[0].attack(jiang_wei) > 0
 
 
 def test_taunt_expires_when_jiang_wei_defeated():

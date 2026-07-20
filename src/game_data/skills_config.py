@@ -1167,7 +1167,7 @@ class ThunderStrikeSkill(Skill):
         super().__init__(
             skill_id="thunder_strike",
             name="雷击",
-            description="选择敌方2x2方格并猜奇偶；猜对后打下两道闪电，猜错则无事发生",
+            description="选择敌方2x2方格并猜奇偶；猜对后区域内每名敌将连中两道天雷，每道造成智力差伤害（至少1点）",
             skill_type=SkillType.DAMAGE,
             target_type=TargetType.AREA_ENEMY,
             cooldown=0,
@@ -1209,21 +1209,25 @@ class ThunderStrikeSkill(Skill):
                 "details": [],
             }
 
-        # 整个技能只进行一次施法者判定；两道雷共享同一个结果。
+        # 整个技能只进行一次施法者判定；范围内每名目标共享结果并各承受两道雷。
         judgment = odd_even_judgment(guess)
-        strike_targets = self._select_strike_targets(block_generals)
         details = []
         total_damage = 0
-        for target in strike_targets:
+        for target in block_generals:
+            damage_per_bolt = self._calculate_thunder_damage(caster, target)
             damage = 0
             if judgment["success"]:
-                damage = self._calculate_thunder_damage(caster, target)
-                damage = target.take_damage(damage, caster, "skill")
+                for _ in range(self.strike_count):
+                    if not target.is_alive:
+                        break
+                    damage += target.take_damage(damage_per_bolt, caster, "skill")
                 total_damage += damage
 
             details.append({
                 "target": target.name,
                 "judgment": judgment,
+                "bolts": self.strike_count,
+                "damage_per_bolt": damage_per_bolt,
                 "damage": damage,
                 "target_hp": target.current_hp,
             })
@@ -1234,7 +1238,8 @@ class ThunderStrikeSkill(Skill):
             "block": block_positions,
             "judgment": judgment,
             "triggered": judgment["success"],
-            "strike_count": len(details),
+            "strike_count": self.strike_count,
+            "targets_hit": len(block_generals),
             "total_damage": total_damage,
             "details": details,
         }
@@ -1244,7 +1249,7 @@ class ThunderStrikeSkill(Skill):
             caster.get_effective_intelligence()
             - target.get_effective_intelligence()
         )
-        return max(1, intelligence_diff * 2)
+        return max(1, intelligence_diff)
 
     def _select_target_block(self, enemy_team):
         best_positions = []
@@ -1267,19 +1272,6 @@ class ThunderStrikeSkill(Skill):
                     best_generals = generals
 
         return best_positions, best_generals
-
-    def _select_strike_targets(self, block_generals):
-        targets = sorted(
-            block_generals,
-            key=lambda general: (
-                general.get_effective_intelligence(),
-                general.current_hp,
-                general.name,
-            ),
-        )
-        if len(targets) == 1:
-            return targets * self.strike_count
-        return targets[:self.strike_count]
 
 
 class JiangdongBeautySkill(Skill):
@@ -1895,13 +1887,14 @@ class TauntSkill(Skill):
         super().__init__(
             skill_id="taunt",
             name="挑衅",
-            description="使敌方2x2方格内的武将本回合普攻只能攻击自己",
+            description="使敌方2x2方格内的武将在其下一次行动回合普攻只能攻击自己",
             skill_type=SkillType.ENHANCE_WEAKEN,
             target_type=TargetType.AREA_ENEMY,
             cooldown=0,
             morale_cost=3,
         )
-        self.duration = 1
+        # 新行动方开局会先更新效果，设为 2 才能覆盖目标方紧随其后的整回合。
+        self.duration = 2
 
     def execute(self, caster, targets, battle_context):
         caster_team = battle_context.get_team_for_general(caster)

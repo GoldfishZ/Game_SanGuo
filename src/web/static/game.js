@@ -670,6 +670,13 @@ function highestForceGeneral(teamKey) {
 
 function attackRangeFor(general, enemyKey) {
   var enemies = aliveGenerals(enemyKey);
+  if (general._forcedTargetId) {
+    var forcedTarget = enemies.find(function(target) {
+      return target.id === general._forcedTargetId;
+    });
+    if (forcedTarget) return [forcedTarget];
+  }
+
   var fronts = [];
   for (var lane = 0; lane < 4; lane++) {
     var laneGenerals = enemies.filter(function(g) { return g.col === lane; })
@@ -681,9 +688,6 @@ function attackRangeFor(general, enemyKey) {
   }
   if (general._frontOnlyAttack) {
     fronts = fronts.filter(function(target) { return target.col === general.col; });
-  }
-  if (general._forcedTargetId) {
-    fronts = fronts.filter(function(target) { return target.id === general._forcedTargetId; });
   }
   return fronts;
 }
@@ -780,18 +784,39 @@ function announceTurn(state) {
   BattleAudio.play("morale");
 }
 
-function showSkillCinematic(name, caster, kind) {
+function escapeCinematicText(value) {
+  return String(value || "").replace(/[&<>'"]/g, function(char) {
+    return { "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;" }[char];
+  });
+}
+
+function showSkillCinematic(name, general, kind) {
   if (window.__stressMode) return Promise.resolve();
   var layer = document.getElementById("skill-cinematic");
   var battle = document.getElementById("scr-battle");
-  if (!layer) return Promise.resolve();
+  if (!layer || !general) return Promise.resolve();
+
+  var generalName = escapeCinematicText(general.name || "武将");
+  var skillName = escapeCinematicText(name || general.skill || "发动技能");
+  var camp = escapeCinematicText(general.camp || "他");
+  var image = general.image ? escapeCinematicText(general.image) : "";
+  var portrait = image
+    ? '<img src="/generals/' + image + '" alt="' + generalName + '" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'grid\'">' +
+      '<span class="skill-closeup-fallback" style="display:none">' + generalName.charAt(0) + '</span>'
+    : '<span class="skill-closeup-fallback">' + generalName.charAt(0) + '</span>';
+
   layer.setAttribute("data-kind", kind || "buff");
-  layer.innerHTML = '<div class="skill-command"><strong>' + name + '</strong><small>' + caster + ' · 军令既出</small></div>';
+  layer.setAttribute("data-camp", camp);
+  layer.innerHTML = '<div class="skill-closeup" role="status" aria-live="assertive">' +
+    '<div class="skill-closeup-portrait">' + portrait + '</div>' +
+    '<div class="skill-closeup-copy"><small>' + camp + ' · 武将技</small><strong>' + generalName + '</strong><b>' + skillName + '</b></div>' +
+    '</div>';
   layer.classList.add("active");
   if (battle) battle.classList.add("battle-cinematic-focus");
   BattleAudio.play("command");
-  return sleep(720).then(function() {
+  return sleep(1400).then(function() {
     layer.classList.remove("active");
+    layer.removeAttribute("data-camp");
     layer.innerHTML = "";
     if (battle) battle.classList.remove("battle-cinematic-focus");
   });
@@ -979,10 +1004,11 @@ function updateBattlePhaseUI() {
   var morale = currentTeamData() ? (currentTeamData().morale || 0) : 0;
 
   var hasAttacked = selected && selected._hasAttacked;
+  var hasExtraAttack = selected && selected._hasExtraAttack;
   var hasUsedSkill = selected && selected._hasUsedSkill;
   var skillCost = selected ? (selected.skill_cost || 0) : 0;
   var canSkill = canAct && selected && selected.skill && selected.skill !== "无" && !selected.cooldown && !hasUsedSkill && morale >= skillCost;
-  var canAttack = canAct && !hasAttacked;
+  var canAttack = canAct && (!hasAttacked || hasExtraAttack);
 
   attackBtn.style.display = canAct ? "" : "none";
   skillBtn.style.display = canAct ? "" : "none";
@@ -1003,7 +1029,9 @@ function updateBattlePhaseUI() {
       skillBtn.setAttribute("data-tooltip", selected.skill + " — " + (selected.skill_desc || ""));
     }
 
-    if (hasAttacked) {
+    if (hasExtraAttack) {
+      attackBtn.setAttribute("data-tooltip", selected.name + " 攻速判定成功，可追加一次普攻并重新选择目标");
+    } else if (hasAttacked) {
       attackBtn.setAttribute("data-tooltip", selected.name + " 本回合已普攻过");
     } else if (canAttack) {
       attackBtn.setAttribute("data-tooltip", selected.name + " 普攻 — 武力 " + (selected.force || 0));
@@ -1140,7 +1168,7 @@ async function useSkill() {
   // 施法者先抬卡并进入技能暗场，随后才结算真实目标反馈。
   var cellEl = document.querySelector(allyGrid + ' .bcell[data-row="' + selectedAttacker.row + '"][data-col="' + selectedAttacker.col + '"]');
   if (cellEl) cellEl.classList.add("casting");
-  await showSkillCinematic(sk, selectedAttacker.general.name, skillType);
+  await showSkillCinematic(sk, selectedAttacker.general, skillType);
 
   var body = { general_id: selectedAttacker.general.id };
   if (castOptions.area) {
@@ -1216,11 +1244,15 @@ async function playSkillResolution(skillResult, skillName, fallbackKind, skillId
       var thunderCell = findBattleCellByName(thunderDetail.target);
       if (!thunderCell) continue;
       var thunderCenter = getCellCenter(thunderCell);
-      FX.lightningStrike(thunderCenter.x, thunderCenter.y);
-      BattleAudio.play("lightning");
-      await sleep(220);
+      var bolts = thunderDetail.bolts || 2;
       thunderCell.classList.add("resolve-lightning");
-      await sleep(100);
+      for (var boltIndex = 0; boltIndex < bolts; boltIndex++) {
+        var boltOffset = (boltIndex - (bolts - 1) / 2) * 22;
+        FX.lightningStrike(thunderCenter.x + boltOffset, thunderCenter.y - 4, boltIndex);
+        BattleAudio.play("lightning");
+        await sleep(150);
+      }
+      await sleep(90);
       spawnFloatNum(thunderCell, thunderDetail.damage, "damage");
       await sleep(420);
       thunderCell.classList.remove("resolve-lightning");
@@ -1834,14 +1866,28 @@ function quitToMenu() {
         particles.push({ type: "smoke", x: x + (Math.random() - 0.5) * 20, y: y + (Math.random() - 0.5) * 10, vx: (Math.random() - 0.5) * 0.5, vy: -0.5 - Math.random(), life: 1, color: "#666", size: 8 + Math.random() * 8, alpha: 0.3 });
       }
     },
-    lightningStrike: function(x, y) {
-      ctx.save(); ctx.globalAlpha = 0.6; ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, W, H); ctx.restore();
-      for (var i = 0; i < 25; i++) {
-        particles.push({ type: "bolt", x: x + (Math.random() - 0.5) * 60, y: y + (Math.random() - 0.5) * 80, vx: (Math.random() - 0.5) * 8, vy: (Math.random() - 0.5) * 8, life: 0.4 + Math.random() * 0.3, color: "#ffe840", size: 1.5 + Math.random() * 3 });
+    lightningStrike: function(x, y, boltIndex) {
+      if (window.__stressMode) return;
+      var path = [];
+      var startX = x + (Math.random() - 0.5) * 42;
+      var startY = Math.max(-20, y - Math.max(180, H * 0.62));
+      path.push({ x: startX, y: startY });
+      for (var step = 1; step < 7; step++) {
+        var progress = step / 7;
+        path.push({
+          x: x + (Math.random() - 0.5) * (30 - progress * 12),
+          y: startY + (y - startY) * progress,
+        });
       }
-      FX.screenShake();
+      path.push({ x: x, y: y });
+      particles.push({ type: "boltpath", path: path, life: 0.62, alpha: 0.92 });
+      particles.push({ type: "flash", life: 0.18, alpha: boltIndex ? 0.22 : 0.4 });
+      for (var i = 0; i < 18; i++) {
+        particles.push({ type: "spark", x: x + (Math.random() - 0.5) * 46, y: y + (Math.random() - 0.5) * 42, vx: (Math.random() - 0.5) * 7, vy: (Math.random() - 0.5) * 7, life: 0.36 + Math.random() * 0.26, color: "#d9edff", size: 1.5 + Math.random() * 2.5 });
+      }
+      FX.screenShake(true);
       for (var j = 0; j < 10; j++) {
-        particles.push({ type: "glow", x: x + (Math.random() - 0.5) * 40, y: y + (Math.random() - 0.5) * 40, vx: 0, vy: 0, life: 0.6 + Math.random() * 0.4, color: "#ffffc0", size: 6 + Math.random() * 8, alpha: 0.5 });
+        particles.push({ type: "glow", x: x + (Math.random() - 0.5) * 34, y: y + (Math.random() - 0.5) * 34, vx: 0, vy: 0, life: 0.5 + Math.random() * 0.3, color: "#cfe9ff", size: 8 + Math.random() * 10, alpha: 0.65 });
       }
     },
     meteorStrike: function(x, y) {
@@ -1912,11 +1958,14 @@ function quitToMenu() {
       ctx.stroke();
       ctx.restore();
     },
-    screenShake: function() {
+    screenShake: function(strong) {
       var app = document.getElementById("app");
-      if (!app) return;
-      app.classList.add("shaking");
-      setTimeout(function() { app.classList.remove("shaking"); }, 500);
+      if (!app || window.__stressMode) return;
+      var className = strong ? "shaking-strong" : "shaking";
+      app.classList.remove(className);
+      void app.offsetWidth;
+      app.classList.add(className);
+      setTimeout(function() { app.classList.remove(className); }, strong ? 420 : 500);
     },
     skillEffect: function(el, skillName, skillType) {
       var center = getCellCenter(el);
@@ -1962,13 +2011,42 @@ function quitToMenu() {
     }
     for (var i = particles.length - 1; i >= 0; i--) {
       var p = particles[i];
-      p.x += p.vx; p.y += p.vy; p.life -= 0.025;
-      if (p.type === "fire" || p.type === "smoke") { p.vx *= 0.95; p.vy *= 0.95; }
-      else if (p.type === "miasma") { p.vx *= 0.98; p.vy *= 0.98; }
-      else { p.vx *= 0.96; p.vy *= 0.96; }
+      if (p.type !== "boltpath" && p.type !== "flash") {
+        p.x += p.vx; p.y += p.vy;
+        if (p.type === "fire" || p.type === "smoke") { p.vx *= 0.95; p.vy *= 0.95; }
+        else if (p.type === "miasma") { p.vx *= 0.98; p.vy *= 0.98; }
+        else { p.vx *= 0.96; p.vy *= 0.96; }
+      }
+      p.life -= 0.025;
       ctx.globalAlpha = Math.max(0, p.life * (p.alpha || 1));
-      ctx.fillStyle = p.color;
-      if (p.type === "smoke") {
+      if (p.type === "flash") {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, p.life * (p.alpha || 1));
+        ctx.fillStyle = "#dceeff";
+        ctx.fillRect(0, 0, W, H);
+        ctx.restore();
+      } else if (p.type === "boltpath") {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, p.life * (p.alpha || 1));
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        ctx.shadowColor = "#89cfff";
+        ctx.shadowBlur = 26;
+        ctx.strokeStyle = "rgba(132,205,255,.78)";
+        ctx.lineWidth = 9;
+        ctx.beginPath();
+        ctx.moveTo(p.path[0].x, p.path[0].y);
+        for (var pathIndex = 1; pathIndex < p.path.length; pathIndex++) ctx.lineTo(p.path[pathIndex].x, p.path[pathIndex].y);
+        ctx.stroke();
+        ctx.shadowBlur = 10;
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(p.path[0].x, p.path[0].y);
+        for (var coreIndex = 1; coreIndex < p.path.length; coreIndex++) ctx.lineTo(p.path[coreIndex].x, p.path[coreIndex].y);
+        ctx.stroke();
+        ctx.restore();
+      } else if (p.type === "smoke") {
         ctx.beginPath(); ctx.arc(p.x, p.y, p.size * Math.max(0.1, p.life), 0, Math.PI * 2); ctx.fill();
       } else if (p.type === "glow") {
         var grad = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, p.size);

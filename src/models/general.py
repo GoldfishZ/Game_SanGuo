@@ -133,6 +133,7 @@ class General:
         self.active_skill_usage_counts = {}  # 主动技能使用次数（按武将实例记录）
         self.last_attack_speed_judgment = None
         self._has_attacked_this_turn = False  # 本回合是否已普攻
+        self._extra_attack_available = False  # 攻速判定成功后可用的一次追加普攻
         self._has_used_skill_this_turn = False  # 本回合是否已使用技能
         # 仅用于表现层的短期事件队列。战斗规则仍由模型本身结算，Web 前端
         # 消费这些事件来按真实顺序播放防栅、护盾、复活等反馈。
@@ -346,13 +347,19 @@ class General:
         """
         if not self.is_alive or not target.is_alive:
             return 0
-        if self._has_attacked_this_turn:
-            return 0  # 本回合已普攻过，不可再次攻击
+        if self._has_attacked_this_turn and not self._extra_attack_available:
+            return 0  # 本回合普攻与追加普攻均已用完
         forced_target = self.get_forced_attack_target()
         if forced_target is not None and target is not forced_target:
             return 0
-        if self.has_buff_type("front_only_attack") and not self.can_attack_front_target(target):
+        if forced_target is None and self.has_buff_type("front_only_attack") and not self.can_attack_front_target(target):
             return 0
+
+        # 攻速判定成功后获得的追加普攻不再触发第二次判定。
+        if self._extra_attack_available:
+            self._extra_attack_available = False
+            return self._perform_basic_attack_once(target)
+
         # 攻速限制判定（debuff：必须猜对才能普攻）
         if self.has_debuff_type("attack_speed_required"):
             self.consume_debuff_type("attack_speed_required")
@@ -363,16 +370,16 @@ class General:
                 return 0
 
         actual_damage = self._perform_basic_attack_once(target)
+        self._has_attacked_this_turn = True
 
-        # 攻速判定（buff：猜对则获得额外一次普攻）
+        # 攻速判定（buff：猜对则获得一次可自行选目标的追加普攻）。
         if self.has_buff_type("attack_speed_judgment"):
             self.consume_buff_type("attack_speed_judgment")
             judgment = odd_even_judgment(guess)
             self.last_attack_speed_judgment = judgment
-            if judgment["success"] and target.is_alive:
-                actual_damage += self._perform_basic_attack_once(target)
+            if judgment["success"] and self.is_alive:
+                self._extra_attack_available = True
 
-        self._has_attacked_this_turn = True
         return actual_damage
 
     def _perform_basic_attack_once(self, target: 'General') -> int:
@@ -511,6 +518,7 @@ class General:
         """更新效果持续时间和技能冷却（每回合开始时调用）"""
         # 重置本回合攻击和技能状态
         self._has_attacked_this_turn = False
+        self._extra_attack_available = False
         self._has_used_skill_this_turn = False
 
         self.buffs = [buff for buff in self.buffs if buff['duration'] > 1]
@@ -659,8 +667,10 @@ class General:
         return True
     
     def can_attack(self) -> bool:
-        """检查本回合是否还可以普攻"""
-        return self.is_alive and not self._has_attacked_this_turn
+        """检查本回合是否还可以普攻（含攻速判定成功后的追加普攻）。"""
+        return self.is_alive and (
+            not self._has_attacked_this_turn or self._extra_attack_available
+        )
 
     def can_use_skill(self) -> bool:
         """检查本回合是否还可以使用技能"""

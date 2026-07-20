@@ -229,6 +229,7 @@ class GameState:
                 "_fenceBroken": not g.get_passive_skill("防栅").is_active if g.has_passive_skill("防栅") else False,
                 "_reviveUsed": g.get_passive_skill("复活").has_revived if g.has_passive_skill("复活") else False,
                 "_hasAttacked": g._has_attacked_this_turn,
+                "_hasExtraAttack": g._extra_attack_available,
                 "_hasUsedSkill": g._has_used_skill_this_turn,
                 "_hasSpeedJudgment": g.has_buff_type("attack_speed_judgment"),
                 "_hasSpeedRequired": g.has_debuff_type("attack_speed_required"),
@@ -614,6 +615,8 @@ def handle_api(path, body, handler):
                     f" 攻速判定：选择{guess_label}，掷出{speed_judgment['dice']}点"
                     f"（{parity_label}），{'成功' if speed_judgment['success'] else '失败'}。"
                 )
+                if speed_mode == "bonus_attack" and speed_judgment["success"]:
+                    STATE.last_event += " 获得一次可重新选择目标的追加普攻。"
             if bs._is_game_over():
                 STATE.finish_battle()
         else:
