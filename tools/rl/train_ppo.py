@@ -133,6 +133,9 @@ def main():
     parser.add_argument("--patience", type=int, default=10)
     parser.add_argument("--min-delta", type=float, default=0.01)
     parser.add_argument("--learning-rate", type=float, default=3e-4)
+    parser.add_argument("--learning-rate-final", type=float)
+    parser.add_argument("--entropy-coef", type=float, default=0.01)
+    parser.add_argument("--entropy-coef-final", type=float)
     parser.add_argument("--epochs", type=int, default=4)
     parser.add_argument("--target-kl", type=float, default=0.015)
     parser.add_argument("--run-name")
@@ -155,6 +158,11 @@ def main():
     logger = TrainLogger(run_name=args.run_name, config=config)
     tracker = GeneralStrengthTracker()
     convergence = ConvergenceTracker(args.target_winrate, args.patience, args.min_delta)
+    if args.resume:
+        convergence.best_win_rate = state.get("best_win_rate", float("-inf"))
+        convergence.best_quality_score = state.get("best_quality_score", convergence.best_win_rate)
+    final_lr = args.learning_rate_final if args.learning_rate_final is not None else args.learning_rate
+    final_entropy = args.entropy_coef_final if args.entropy_coef_final is not None else args.entropy_coef
     env = SanguoEnv(make_opponent(args.stage))
     coordinator = SyncRolloutCoordinator(profile.num_workers, args.stage) if profile.num_workers > 1 else None
     started = time.monotonic()
@@ -167,7 +175,17 @@ def main():
             else:
                 batch, rollout = collect_rollout(env, model, profile.device, profile.rollout_steps, args.seed + update * 100000, tracker)
             elapsed = time.monotonic() - started
-            metrics = ppo_update(model, optimizer, batch, epochs=args.epochs, minibatch_size=profile.minibatch_size, target_kl=args.target_kl, device=profile.device)
+            progress = update / max(1, args.max_updates)
+            scheduled_lr = args.learning_rate + (final_lr - args.learning_rate) * progress
+            scheduled_entropy = args.entropy_coef + (final_entropy - args.entropy_coef) * progress
+            for group in optimizer.param_groups:
+                group["lr"] = scheduled_lr
+            metrics = ppo_update(
+                model, optimizer, batch, epochs=args.epochs,
+                minibatch_size=profile.minibatch_size, target_kl=args.target_kl,
+                entropy_coef=scheduled_entropy, device=profile.device,
+            )
+            metrics["entropy_coefficient"] = scheduled_entropy
             metrics.update({"rollout_steps": profile.rollout_steps, "fps": profile.rollout_steps / max(elapsed, 1e-6), "wallclock_minutes": elapsed / 60})
             logger.log(update, metrics, "train")
             logger.log(update, rollout, "rollout")
@@ -186,9 +204,17 @@ def main():
                 )
                 logger.log(update, {key: value for key, value in validation.items() if isinstance(value, (int, float))}, "eval/heuristic")
                 logger.log(update, validation["balance"], "eval_balance")
-                is_best, stop, reason = convergence.update(validation["win_rate"])
+                is_best, stop, reason, quality_score = convergence.update(
+                    validation["win_rate"], validation["timeout_rate"],
+                )
+                logger.log(update, {"quality_score": quality_score, "best_quality_score": convergence.best_quality_score}, "eval/heuristic")
                 stop_reason = reason if stop else None
-            state = {"model": model.state_dict(), "optimizer": optimizer.state_dict(), "update": update, "config": config, "best_win_rate": convergence.best_win_rate}
+            state = {
+                "model": model.state_dict(), "optimizer": optimizer.state_dict(),
+                "update": update, "config": config,
+                "best_win_rate": convergence.best_win_rate,
+                "best_quality_score": convergence.best_quality_score,
+            }
             if should_checkpoint or is_best:
                 manager.save(state, update, is_best=is_best)
             if stop_reason:

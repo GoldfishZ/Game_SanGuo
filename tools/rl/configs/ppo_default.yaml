@@ -16,5 +16,8 @@ target_winrate: 0.85
 patience: 10
 min_delta: 0.01
 learning_rate: 0.0003
+learning_rate_final: 0.00003
+entropy_coef: 0.01
+entropy_coef_final: 0.005
 epochs: 4
 target_kl: 0.015

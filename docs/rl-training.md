@@ -70,7 +70,9 @@
 
 `--target-kl 0.015` 是 **PPO 单次 update 内部**的保护：当近似 KL 过大时，它会提前结束该次 update 的剩余 epoch/minibatch，**不会结束整个训练任务**。
 
-如果达到 update 或时间上限仍未收敛，应读取 `ppo_best.pt`、TensorBoard 与固定评估结果，针对奖励、学习率、对手难度、动作分布或模型容量调整后再续训；不应无限循环。
+如果达到 update 或时间上限仍未收敛，应读取 `ppo_best.pt`、TensorBoard 与固定评估结果，针对奖励、学习率、对手难度、动作分布或模型容量调整后再续训；不应无限循环。训练对失败且没有生命/击杀变化的动作施加小型 `no_progress` 负反馈；评估 best 使用 `win_rate - timeout_rate` 的保守质量分，避免无进展策略凭偶然胜率覆盖稳定 checkpoint。
+
+对于长时间恢复训练，可通过 `--learning-rate-final` 与 `--entropy-coef-final` 线性退火学习率和探索强度。恢复 checkpoint 时会保留其 best 质量基线，低质量的首次恢复评估不会覆盖 `ppo_best.pt`。
 
 ---
 

@@ -145,7 +145,9 @@ class SanguoEnv:
             self.learning_team, self.enemy_team, action_success=bool(result.get("success")),
             done=self.done, winner=winner, timeout=timeout,
         )
-        return self.observation(), reward, self.done, self.info(action_id, result)
+        response_info = self.info(action_id, result)
+        response_info["no_progress"] = self.reward_handler.last_no_progress
+        return self.observation(), reward, self.done, response_info
 
     def _apply_learning_action(self, action):
         if action.kind == "end_skill":
