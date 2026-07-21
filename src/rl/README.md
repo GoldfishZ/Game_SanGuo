@@ -4,6 +4,10 @@
 
 详细 Windows/CUDA/worker runbook：[`docs/rl-training-windows.md`](../../docs/rl-training-windows.md)。
 
+未来全流程 PvE（技能/协同驱动的选将、布阵与 battle policy 协作）设计：[`docs/pve-ai-architecture.md`](../../docs/pve-ai-architecture.md)。
+
+当前只有战斗阶段 PPO 已实现；DraftPolicy、FormationPolicy、协同 telemetry 和 Web PvE bridge 均是后续工作。
+
 ## 安装与检查
 
 ```powershell

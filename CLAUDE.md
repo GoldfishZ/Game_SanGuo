@@ -108,6 +108,7 @@ src/web/static/
 
 - 训练系统完整说明：[`docs/rl-training.md`](docs/rl-training.md)
 - Windows/CUDA 启动指南：[`docs/rl-training-windows.md`](docs/rl-training-windows.md)
+- 全流程 PvE AI（选将、布阵、协同 telemetry 与价值模型）设计：[`docs/pve-ai-architecture.md`](docs/pve-ai-architecture.md)
 - 训练模型目前只用于本地环境、评估和武将平衡分析；网页 PvE 接入是后续工作。
 
 ## 工具脚本

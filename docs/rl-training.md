@@ -550,6 +550,7 @@ eval_balance/*
 | 受控边际强度 | 仅有 practical/mirror | 实现固定锚点阵容、单武将替换和 match-up matrix。 |
 | 阵营观察编码 | 凉/他尚未区分 | 将 camp one-hot 与实际六阵营数据对齐。 |
 | 自博弈 | 未实现 | 启发式阶段稳定后引入冻结历史 checkpoint 池。 |
+| 全流程 PvE 选将/布阵 | 未实现 | 参见 [`pve-ai-architecture.md`](pve-ai-architecture.md)：以 telemetry、协同事件、反事实实验和价值模型驱动，不使用面板经验规则。 |
 
 ---
 
