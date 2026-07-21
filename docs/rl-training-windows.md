@@ -34,8 +34,8 @@ python tools/rl/train_ppo.py `
   --resume artifacts/rl/checkpoints/ppo_best.pt `
   --device auto --num-workers auto `
   --max-updates 3000 --max-wallclock-minutes 540 `
-  --learning-rate 0.0002 --learning-rate-final 0.00002 `
-  --entropy-coef 0.02 --entropy-coef-final 0.005 `
+  --learning-rate 0.0003 --learning-rate-final 0.0001 `
+  --entropy-coef 0.05 --entropy-coef-final 0.01 `
   --eval-every 25 --eval-episodes 96 `
   --eval-max-steps 4096 --eval-max-seconds 300 `
   --checkpoint-every 10 --keep-last 8 `

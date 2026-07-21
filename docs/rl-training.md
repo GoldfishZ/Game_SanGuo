@@ -516,26 +516,37 @@ checkpoint cadence     20 updates
 artifacts/rl/runs/random-stage-20260720/
 ```
 
-### 重要：多 worker 指标限制
+### 多 worker rollout 指标
 
-当前多 worker coordinator 已能正确采样、回传 fragment、计算 GAE 并在 GPU 上 PPO update；但其 rollout episode summary 还没有汇总到训练侧 tracker。因此在多 worker 训练中：
+当前多 worker coordinator 会在每个 episode 结束时回传 summary，并由 learner 汇总到 TensorBoard。因此以下指标都是真实采样结果：
 
 ```text
-rollout/win_rate / loss_rate / draw_rate = 占位值
-balance/general_count = 0
-general/* = 不会从训练 rollout 产生
+rollout/win_rate
+rollout/loss_rate
+rollout/draw_rate
+rollout/timeout_rate
+rollout/mean_turns
+rollout/mean_episode_steps
+rollout/mean_episode_reward
+rollout/no_progress_rate
+rollout/action_skill_ratio
+rollout/action_attack_ratio
+rollout/action_end_ratio
+balance/*
+general/<武将>/*
 ```
 
-这不是“模型胜率为 0”或“没有武将数据”。在当前实现中，请以以下指标为准：
+这些指标仅统计本次训练进程启动后**已完成**的 episode；被 rollout 截断、仅用于 GAE bootstrap 的未结束局不会被伪造为胜负。恢复训练后，general/balance 从新进程重新累积，因此跨 run 对比仍应优先看固定评估：
 
 ```text
 eval/heuristic/win_rate
 eval/heuristic/loss_rate
 eval/heuristic/draw_rate
+eval/heuristic/quality_score
 eval_balance/*
 ```
 
-离线 `evaluate_strength.py` 也可生成真实的强度统计。
+离线 `evaluate_strength.py` 可生成更大样本量的强度统计。
 
 ---
 
@@ -544,8 +555,8 @@ eval_balance/*
 | 项目 | 当前状态 | 后续方向 |
 |---|---|---|
 | 网页 PvE | 未接入 | 训练稳定后加载 `ppo_best.pt` 并通过 Web bridge 自动执行 AI 回合。 |
-| 多 worker 实时武将统计 | 未汇总 episode summary | 在 `RolloutFragment` 中返回 episode summaries 与 damage，更新 tracker。 |
-| 多 worker rollout 胜负统计 | 占位值 | 同上。 |
+| 多 worker 跨 run 武将统计 | 每次训练进程重新累积 | 若需跨 run 比较，使用固定评估或后续 telemetry 存档。 |
+| 多 worker rollout 胜负统计 | 已按完成 episode 真实汇总 | 截断 episode 只用于 GAE，不伪造胜负。 |
 | YAML 配置 | `tools/rl/configs/ppo_default.yaml` 存在，但 CLI 尚未读取 | 实现 `--config` 并让 CLI 覆盖 YAML。 |
 | 受控边际强度 | 仅有 practical/mirror | 实现固定锚点阵容、单武将替换和 match-up matrix。 |
 | 阵营观察编码 | 凉/他尚未区分 | 将 camp one-hot 与实际六阵营数据对齐。 |

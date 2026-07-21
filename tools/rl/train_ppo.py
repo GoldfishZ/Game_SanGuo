@@ -40,9 +40,40 @@ def batch_from_fragments(fragments):
     return {key: np.concatenate(values) for key, values in merged.items()}
 
 
-def rollout_metrics_from_fragments(fragments):
-    done = np.concatenate([fragment.dones for fragment in fragments])
-    return {"episodes": int(done.sum()), "worker_count": len(fragments), "win_rate": 0.0, "loss_rate": 0.0, "draw_rate": 0.0}
+def rollout_metrics_from_fragments(fragments, tracker=None):
+    """汇总 worker 的已完成 episode；截断 episode 只参与 GAE，不进入胜负统计。"""
+    summaries = [summary for fragment in fragments for summary in fragment.episode_summaries]
+    total_steps = sum(len(fragment.actions) for fragment in fragments)
+    episodes = len(summaries)
+    wins = sum(summary.outcome == "win" for summary in summaries)
+    losses = sum(summary.outcome == "loss" for summary in summaries)
+    draws = sum(summary.outcome == "draw" for summary in summaries)
+    action_counts = {
+        kind: sum(summary.action_counts.get(kind, 0) for summary in summaries)
+        for kind in ("skill", "attack", "end")
+    }
+    if tracker:
+        for summary in summaries:
+            tracker.record_episode_from_summary(summary)
+    denominator = max(1, episodes)
+    return {
+        "episodes": episodes,
+        "worker_count": len(fragments),
+        "win_rate": wins / denominator,
+        "loss_rate": losses / denominator,
+        "draw_rate": draws / denominator,
+        "timeout_rate": sum(summary.timeout for summary in summaries) / denominator,
+        "mean_turns": sum(summary.turns for summary in summaries) / denominator,
+        "mean_episode_steps": sum(summary.steps for summary in summaries) / denominator,
+        "mean_episode_reward": sum(summary.episode_reward for summary in summaries) / denominator,
+        "no_progress_rate": sum(summary.no_progress_count for summary in summaries) / max(1, total_steps),
+        **{f"action_{kind}_ratio": count / max(1, total_steps) for kind, count in action_counts.items()},
+    }
+
+
+def linear_schedule(initial, final, progress):
+    """线性退火，并确保超出 horizon 后保持最终值。"""
+    return initial + (final - initial) * min(1.0, max(0.0, progress))
 
 
 
@@ -133,9 +164,9 @@ def main():
     parser.add_argument("--patience", type=int, default=10)
     parser.add_argument("--min-delta", type=float, default=0.01)
     parser.add_argument("--learning-rate", type=float, default=3e-4)
-    parser.add_argument("--learning-rate-final", type=float)
-    parser.add_argument("--entropy-coef", type=float, default=0.01)
-    parser.add_argument("--entropy-coef-final", type=float)
+    parser.add_argument("--learning-rate-final", type=float, default=1e-4)
+    parser.add_argument("--entropy-coef", type=float, default=0.05)
+    parser.add_argument("--entropy-coef-final", type=float, default=0.01)
     parser.add_argument("--epochs", type=int, default=4)
     parser.add_argument("--target-kl", type=float, default=0.015)
     parser.add_argument("--run-name")
@@ -173,13 +204,13 @@ def main():
             if coordinator:
                 fragments = coordinator.collect(model, profile.rollout_steps, args.seed + update * 100000)
                 batch = batch_from_fragments(fragments)
-                rollout = rollout_metrics_from_fragments(fragments)
+                rollout = rollout_metrics_from_fragments(fragments, tracker=tracker)
             else:
                 batch, rollout = collect_rollout(env, model, profile.device, profile.rollout_steps, args.seed + update * 100000, tracker)
             elapsed = time.monotonic() - started
             progress = 0.0 if args.max_updates <= 0 else min(1.0, update / args.max_updates)
-            scheduled_lr = args.learning_rate + (final_lr - args.learning_rate) * progress
-            scheduled_entropy = args.entropy_coef + (final_entropy - args.entropy_coef) * progress
+            scheduled_lr = linear_schedule(args.learning_rate, final_lr, progress)
+            scheduled_entropy = linear_schedule(args.entropy_coef, final_entropy, progress)
             for group in optimizer.param_groups:
                 group["lr"] = scheduled_lr
             metrics = ppo_update(
