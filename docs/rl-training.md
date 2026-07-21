@@ -56,17 +56,19 @@
 
 ### 2.1 训练不会无限执行
 
-训练由下列条件控制：
+默认训练**不会**因为短期胜率波动、目标胜率或平台期自动停止。用户应通过 TensorBoard 判断是否继续，并在需要时使用 Ctrl+C 主动停止；程序会保存 latest checkpoint。
 
-- `--max-updates`：最多 PPO update 数，默认 `5000`；
-- `--max-wallclock-minutes`：最多总运行分钟数，默认 `480`（8 小时）；
-- `--target-winrate`：固定验证对手胜率达到目标时结束，默认 `0.85`；
-- `--patience` / `--min-delta`：多次评估未产生有效提升时平台期停止，默认 `10` 次、提升阈值 `0.01`；
+参数语义：
+
+- `--max-updates`：学习率与 entropy 系数的退火周期，默认 `5000`；达到后保持最终参数继续训练；传 `0` 表示不退火；
+- `--max-wallclock-minutes`：可选总时长硬保险，默认 `0`（禁用）；仅传正数时生效；
+- `--min-delta`：覆盖 `ppo_best.pt` 所需的最小质量改善，不停止训练；
+- `--target-winrate`、`--patience`：为兼容旧命令保留，但不再终止训练；
 - `--eval-max-steps`：每局固定评估最多执行的子动作数，默认 `4096`；
 - `--eval-max-seconds`：一整次固定评估的最长时长，默认 `300` 秒；
 - Ctrl+C：保存 latest checkpoint 后退出。
 
-评估若碰到确定性策略重复无进展动作，会在上述限制处中止该局并计为 timeout/draw；timeout 永远不会被当作胜利。
+评估若碰到确定性策略重复无进展动作，会在上述限制处中止该局并计为 timeout/draw；timeout 永远不会被当作胜利或覆盖稳定的 best checkpoint。
 
 `--target-kl 0.015` 是 **PPO 单次 update 内部**的保护：当近似 KL 过大时，它会提前结束该次 update 的剩余 epoch/minibatch，**不会结束整个训练任务**。
 

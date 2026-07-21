@@ -5,7 +5,7 @@ num_workers: auto
 rollout_steps: auto
 minibatch_size: auto
 max_updates: 5000
-max_wallclock_minutes: 480
+max_wallclock_minutes: 0  # 0 = 不自动停止；由 TensorBoard 观察后手动停止
 eval_every: 20
 eval_episodes: 64
 eval_max_steps: 4096

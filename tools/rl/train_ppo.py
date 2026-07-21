@@ -121,8 +121,8 @@ def main():
     parser.add_argument("--num-workers", default="auto", help="当前版本记录建议值；多 worker coordinator 后续启用")
     parser.add_argument("--rollout-steps", default="auto")
     parser.add_argument("--minibatch-size", default="auto")
-    parser.add_argument("--max-updates", type=int, default=5000)
-    parser.add_argument("--max-wallclock-minutes", type=float, default=480)
+    parser.add_argument("--max-updates", type=int, default=5000, help="学习率/探索系数退火周期；不是停止上限，0 表示不退火")
+    parser.add_argument("--max-wallclock-minutes", type=float, default=0, help="可选硬保险；0 表示不限制")
     parser.add_argument("--eval-every", type=int, default=20)
     parser.add_argument("--eval-episodes", type=int, default=64)
     parser.add_argument("--eval-max-steps", type=int, default=4096)
@@ -157,7 +157,7 @@ def main():
     config = vars(args) | {"runtime": profile.to_dict()}
     logger = TrainLogger(run_name=args.run_name, config=config)
     tracker = GeneralStrengthTracker()
-    convergence = ConvergenceTracker(args.target_winrate, args.patience, args.min_delta)
+    convergence = ConvergenceTracker(args.min_delta)
     if args.resume:
         convergence.best_win_rate = state.get("best_win_rate", float("-inf"))
         convergence.best_quality_score = state.get("best_quality_score", convergence.best_win_rate)
@@ -167,7 +167,9 @@ def main():
     coordinator = SyncRolloutCoordinator(profile.num_workers, args.stage) if profile.num_workers > 1 else None
     started = time.monotonic()
     try:
-        for update in range(start_update + 1, args.max_updates + 1):
+        update = start_update
+        while True:
+            update += 1
             if coordinator:
                 fragments = coordinator.collect(model, profile.rollout_steps, args.seed + update * 100000)
                 batch = batch_from_fragments(fragments)
@@ -175,7 +177,7 @@ def main():
             else:
                 batch, rollout = collect_rollout(env, model, profile.device, profile.rollout_steps, args.seed + update * 100000, tracker)
             elapsed = time.monotonic() - started
-            progress = update / max(1, args.max_updates)
+            progress = 0.0 if args.max_updates <= 0 else min(1.0, update / args.max_updates)
             scheduled_lr = args.learning_rate + (final_lr - args.learning_rate) * progress
             scheduled_entropy = args.entropy_coef + (final_entropy - args.entropy_coef) * progress
             for group in optimizer.param_groups:
@@ -204,11 +206,11 @@ def main():
                 )
                 logger.log(update, {key: value for key, value in validation.items() if isinstance(value, (int, float))}, "eval/heuristic")
                 logger.log(update, validation["balance"], "eval_balance")
-                is_best, stop, reason, quality_score = convergence.update(
+                is_best, quality_score = convergence.update(
                     validation["win_rate"], validation["timeout_rate"],
                 )
                 logger.log(update, {"quality_score": quality_score, "best_quality_score": convergence.best_quality_score}, "eval/heuristic")
-                stop_reason = reason if stop else None
+                stop_reason = None
             state = {
                 "model": model.state_dict(), "optimizer": optimizer.state_dict(),
                 "update": update, "config": config,
@@ -217,10 +219,7 @@ def main():
             }
             if should_checkpoint or is_best:
                 manager.save(state, update, is_best=is_best)
-            if stop_reason:
-                print(f"训练停止：{stop_reason}")
-                break
-            if elapsed >= args.max_wallclock_minutes * 60:
+            if args.max_wallclock_minutes and elapsed >= args.max_wallclock_minutes * 60:
                 manager.save(state, update)
                 print("训练停止：max_wallclock_minutes")
                 break
