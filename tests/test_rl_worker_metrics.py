@@ -3,6 +3,7 @@ import math
 import numpy as np
 
 from src.rl.evaluation.strength import GeneralStrengthTracker
+from src.rl.observation import OBSERVATION_SIZE
 from src.rl.training.vector_env import EpisodeSummary, GeneralRecord, RolloutFragment
 from tools.rl.train_ppo import linear_schedule, rollout_metrics_from_fragments
 
@@ -27,7 +28,7 @@ def _summary(outcome, steps=4, turns=2, reward=1.0, no_progress=1):
 
 def _fragment(summaries):
     return RolloutFragment(
-        observations=np.zeros((12, 365), dtype=np.float32),
+        observations=np.zeros((12, OBSERVATION_SIZE), dtype=np.float32),
         masks=np.zeros((12, 722), dtype=np.bool_),
         actions=np.zeros(12, dtype=np.int64),
         log_probs=np.zeros(12, dtype=np.float32),

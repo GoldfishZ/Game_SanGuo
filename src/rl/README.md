@@ -1,62 +1,34 @@
-# 本地离线 PPO 训练
+# 战斗强化学习 v2
 
-该模块将三国战斗规则封装为子动作级、合法动作掩码环境。网页 PvE 尚未接入；训练、评估与武将平衡分析都在本地执行。
-
-详细 Windows/CUDA/worker runbook：[`docs/rl-training-windows.md`](../../docs/rl-training-windows.md)。
-
-未来全流程 PvE（技能/协同驱动的选将、布阵与 battle policy 协作）设计：[`docs/pve-ai-architecture.md`](../../docs/pve-ai-architecture.md)。
-
-当前只有战斗阶段 PPO 已实现；DraftPolicy、FormationPolicy、协同 telemetry 和 Web PvE bridge 均是后续工作。
-
-## 安装与检查
-
-```powershell
-pip install -r requirements.txt
-python -c "import torch; print(torch.__version__, torch.cuda.is_available())"
-```
-
-PyTorch CUDA wheel 必须按本机驱动安装。环境无法识别 CUDA 时会自动回退到 CPU。
-
-## 训练单位
-
-- **rollout step**：学习方一次技能、攻击或结束阶段；
-- **game turn**：一方完整行动；
-- **episode**：一局战斗；
-- **PPO update**：对一个 rollout batch 的一次策略更新。
-
-`--max-updates` 是学习率/探索系数的**退火周期**，不是训练停止上限；达到后保持最终参数继续训练，传入 `0` 可禁用退火。默认训练持续运行，由你通过 TensorBoard 观察并按 Ctrl+C 主动停止。`--max-wallclock-minutes` 是可选硬保险，默认 `0`（禁用）。胜率目标和平台期不会自动终止训练，但仍会维护质量最好的 `ppo_best.pt`。每次固定评估也受 `--eval-max-steps`（默认 4096 步/局）和 `--eval-max-seconds`（默认 300 秒/次）保护；超限局会记为 timeout/draw，绝不会作为胜利。
-
-训练会对失败且没有造成任何生命/击杀变化的动作施加小型 `no_progress` 负奖励，避免策略反复选择无进展动作。默认线性退火为 `learning rate: 3e-4 → 1e-4`、`entropy coefficient: 0.05 → 0.01`；从 checkpoint 恢复时会保留原 best 评估基线，避免较差模型覆盖 `ppo_best.pt`。多 worker 训练会回传真实 episode 胜负、动作、回合、无进展和武将终局快照，因此 `rollout/*`、`general/*`、`balance/*` 可直接用于 TensorBoard 观察。
+当前框架使用 observation v2、统一战斗规则服务、masked PPO 和加权历史池
+self-play。Web、离线环境和未来 PvE 推理都通过
+`src/battle/rules_service.py` / `turn_actions.py` 结算动作。
 
 ## 快速验证
 
 ```powershell
+$env:PYTHONIOENCODING='utf-8'
+python tools/testing/run_tests.py
 python tools/rl/smoke_env.py
-python tools/rl/train_ppo.py --stage random --device auto --num-workers 1 --rollout-steps 256 --max-updates 3 --eval-every 1 --eval-episodes 8 --checkpoint-every 1
 ```
 
-## 正式训练与监控
+## YAML 训练
+
+默认配置：`tools/rl/configs/ppo_default.yaml`。
 
 ```powershell
-python tools/rl/train_ppo.py --stage random --device auto --num-workers auto --max-updates 5000 --max-wallclock-minutes 480 --run-name random-stage
-tensorboard --logdir artifacts/rl/runs --port 6006
+python tools/rl/train_ppo.py --config tools/rl/configs/ppo_default.yaml
 ```
 
-训练产物：
-
-- `artifacts/rl/runs/<run-id>/`：TensorBoard events、CSV、解析后的配置；
-- `artifacts/rl/checkpoints/ppo_latest.pt`：最近 checkpoint；
-- `artifacts/rl/checkpoints/ppo_best.pt`：固定验证胜率最佳 checkpoint。
-
-重点查看 `eval/heuristic/win_rate`（实际强度）、`train/approx_kl`/`clip_fraction`（PPO 稳定性）、`train/explained_variance`（critic）、`rollout/fps`（吞吐）以及 `general/*`、`balance/*`（武将表现）。
-
-## 武将强度
+命令行参数覆盖 YAML，例如：
 
 ```powershell
-python tools/rl/evaluate_strength.py --checkpoint artifacts/rl/checkpoints/ppo_best.pt --mode practical --episodes 500
-python tools/rl/evaluate_strength.py --checkpoint artifacts/rl/checkpoints/ppo_best.pt --mode mirror --episodes 500
+python tools/rl/train_ppo.py --config tools/rl/configs/ppo_default.yaml `
+  --max-updates 500 --num-workers 6 --run-name selfplay-round-1
 ```
 
-`practical` 反映随机搭配下当前策略的实战表现；`mirror` 可用于检查对称阵容下的阵位/先后手偏差。样本很少时强度排名没有统计意义；建议至少数百局后再据此调数值。
+`max_updates` 是本轮训练硬上限；`schedule_updates` 是学习率和 entropy 的退火
+周期。传 `max_updates: 0` 才表示无限训练。
 
-环境的 observation 始终将学习方置于 self 侧；动作掩码中 `0` 表示合法、`1` 表示非法。敌方伏兵隐藏状态不会编码进 observation。
+checkpoint 与 observation schema 绑定。v1 的 365 维 checkpoint 会被明确拒绝，
+不能加载到 v2。

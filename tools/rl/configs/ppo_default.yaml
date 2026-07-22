@@ -1,19 +1,19 @@
-stage: random
+stage: selfplay
 seed: 20260720
 device: auto
+artifact_root: artifacts/rl
 num_workers: auto
 rollout_steps: auto
 minibatch_size: auto
 max_updates: 5000
-max_wallclock_minutes: 0  # 0 = 不自动停止；由 TensorBoard 观察后手动停止
+schedule_updates: 5000
+max_wallclock_minutes: 0  # 0 = 不设置时间上限；仍受 max_updates 限制
 eval_every: 20
 eval_episodes: 64
 eval_max_steps: 4096
 eval_max_seconds: 300
 checkpoint_every: 20
 keep_last: 5
-target_winrate: 0.85
-patience: 10
 min_delta: 0.01
 learning_rate: 0.0003
 learning_rate_final: 0.0001
@@ -21,3 +21,23 @@ entropy_coef: 0.05
 entropy_coef_final: 0.01
 epochs: 4
 target_kl: 0.015
+gamma: 0.99
+gae_lambda: 0.95
+clip_ratio: 0.2
+value_coef: 0.5
+grad_clip: 0.5
+team_size: 3
+cost_limit: 8.0
+max_turns: 200
+reward_hp_delta: 0.05
+reward_kill: 0.15
+reward_action_success: 0.01
+reward_no_progress: -0.02
+reward_win: 1.0
+reward_lose: -1.0
+reward_draw: 0.0  # 冷启动中性；后期可调为 -0.05 ~ -0.2 抑制拖平
+selfplay_current_ratio: 0.5
+selfplay_pool_size: 24
+selfplay_top_k: 8
+selfplay_temperature: 0.25
+selfplay_snapshot_every: 20

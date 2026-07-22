@@ -6,7 +6,7 @@ from itertools import combinations
 from typing import Optional
 
 from src.battle.battle_system import BattleSystem
-from src.battle.turn_actions import apply_attack_action, apply_skill_action, advance_turn
+from src.battle.rules_service import BattleRulesService
 from src.game_data.generals_config import create_general_from_data
 from src.game_data.generals_data import GENERALS_DATA
 from src.models.game_flow import GameFlowController
@@ -30,6 +30,7 @@ class SanguoEnv:
         self.seed_value = None
         self.controller = None
         self.battle_system = None
+        self.rules = None
         self.learning_team = None
         self.enemy_team = None
         self.subphase = "skill"
@@ -66,6 +67,7 @@ class SanguoEnv:
         second.team.current_morale += 2
         self.controller.first_player, self.controller.second_player = first, second
         self.battle_system = BattleSystem(p1.team, p2.team, None, first.team.team_name, max_turns=self.max_turns)
+        self.rules = BattleRulesService(self.battle_system)
         self.battle_system.turn_count = 1
         self.battle_system.current_side.update_effects()
         # 随机决定学习方身份，观察编码始终将其置于 self 侧。
@@ -136,14 +138,13 @@ class SanguoEnv:
         result = self._apply_learning_action(action)
         self._finalize_if_over()
         if not self.done and action.kind == "end_attack":
-            advance_turn(self.battle_system)
+            self.rules.end_turn()
             self._run_opponent_turn()
             self._finalize_if_over()
-        winner = self.battle_system._determine_winner() if self.done else None
-        timeout = self.battle_system.turn_count >= self.battle_system.max_turns
+        outcome = self.rules.outcome()
         reward = self.reward_handler.step(
             self.learning_team, self.enemy_team, action_success=bool(result.get("success")),
-            done=self.done, winner=winner, timeout=timeout,
+            done=self.done, winner=outcome.winner, timeout=outcome.timeout,
         )
         response_info = self.info(action_id, result)
         response_info["no_progress"] = self.reward_handler.last_no_progress
@@ -161,8 +162,8 @@ class SanguoEnv:
                 return {"success": False, "message": "施法者阵位为空"}
             target_team = self.learning_team if "ALLY" in caster.active_skill.target_type.name else self.enemy_team
             target = actions.general_at(target_team, action.target_slot)
-            result = apply_skill_action(
-                self.battle_system, caster, target=target, row=action.row if action.kind == "skill_area" else None,
+            result = self.rules.skill(
+                caster, target=target, row=action.row if action.kind == "skill_area" else None,
                 col=action.col if action.kind == "skill_area" else None, skill_row=action.row if action.kind == "skill_area" else None,
                 guess=action.guess,
             )
@@ -171,7 +172,7 @@ class SanguoEnv:
         target = actions.general_at(self.enemy_team, action.target_slot)
         if attacker is None or target is None:
             return {"success": False, "message": "攻击者或目标阵位为空"}
-        return apply_attack_action(self.battle_system, attacker, target, guess=action.guess)
+        return self.rules.attack(attacker, target, guess=action.guess)
 
     def _run_opponent_turn(self):
         if self.battle_system._is_game_over():
@@ -191,7 +192,7 @@ class SanguoEnv:
             if action.kind == "end_attack":
                 break
         if not self.battle_system._is_game_over():
-            advance_turn(self.battle_system)
+            self.rules.end_turn()
         self.learning_team, self.enemy_team = self.enemy_team, self.learning_team
         self.subphase = "skill"
 

@@ -120,22 +120,44 @@ def apply_skill_action(
     skill_row: Optional[int] = None,
     guess: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """验证并结算一次主动技能，返回稳定的结果对象。"""
+    """解析目标并结算一次主动技能，返回稳定的结果对象。"""
+    targets = resolve_skill_targets(
+        battle_system, caster, target=target, row=row, col=col,
+        orientation=orientation, mode=mode, timing=timing, skill_row=skill_row,
+    )
+    return apply_resolved_skill_action(
+        battle_system, caster, targets, guess=guess,
+    )
+
+
+def apply_resolved_skill_action(
+    battle_system: BattleSystem,
+    caster: General,
+    targets: List[Any],
+    *,
+    guess: Optional[str] = None,
+) -> Dict[str, Any]:
+    """结算调用方已按公开协议解析好的目标；Web/RL 共用同一验证路径。"""
     team = get_team_for_general(battle_system, caster)
     if team is None or team is not battle_system.current_side:
         return {"success": False, "message": "当前不是该武将的行动回合"}
     if not caster.can_use_active_skill() or not caster.can_use_skill():
         return {"success": False, "message": "该武将当前无法使用技能"}
 
-    targets = resolve_skill_targets(
-        battle_system, caster, target=target, row=row, col=col,
-        orientation=orientation, mode=mode, timing=timing, skill_row=skill_row,
-    )
     if not targets:
         return {"success": False, "message": "未选择合法技能目标"}
+    all_generals = battle_system.team1.generals + battle_system.team2.generals
+    hp_before = {general.general_id: general.current_hp for general in all_generals}
     result = caster.use_active_skill(targets, battle_system.battle_context, team, guess=guess)
+    damage_by_target = {
+        general.general_id: max(0, hp_before[general.general_id] - general.current_hp)
+        for general in all_generals
+        if general.current_hp < hp_before[general.general_id]
+    }
     result.setdefault("caster_id", caster.general_id)
     result.setdefault("skill_id", caster.active_skill.skill_id if caster.active_skill else "")
+    result["damage_by_target_id"] = damage_by_target
+    result["damage"] = sum(damage_by_target.values())
     return result
 
 

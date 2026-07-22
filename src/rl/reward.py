@@ -8,7 +8,8 @@ DEFAULT_REWARD = {
     "no_progress": -0.02,
     "win": 1.0,
     "lose": -1.0,
-    "draw": -0.2,
+    # 冷启动阶段保持中性；后期可在 YAML 中逐步调为负值以减少拖平。
+    "draw": 0.0,
 }
 
 
@@ -43,7 +44,8 @@ class RewardHandler:
         if action_success:
             reward += self.config["skill_success"]
         if done:
-            if timeout and winner is None:
+            # 回合上限和外部 step/time guard 一律按平局，不能再由剩余生命改写。
+            if timeout:
                 reward += self.config["draw"]
             elif winner == learning_team.team_name:
                 reward += self.config["win"]

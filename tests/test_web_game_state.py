@@ -144,7 +144,7 @@ def test_web_battle_finishes_at_engine_turn_limit():
     state = post("/api/battle/skip")
 
     assert state["phase"] == "over"
-    assert state["winner"] in {"玩家1", "玩家2"}
+    assert state["winner"] == "平局"
     assert "战斗结束" in state["event"]
 
 

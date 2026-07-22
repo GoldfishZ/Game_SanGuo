@@ -1,0 +1,58 @@
+# RTX 3060 Laptop 6GB：更新阶段保留更多显存余量，采样阶段归还CUDA缓存。
+stage: selfplay
+seed: 20260722
+device: cuda
+num_workers: 6
+rollout_steps: 16384
+minibatch_size: 128
+artifact_root: artifacts/rl/round_v3
+
+max_updates: 600
+schedule_updates: 600
+max_wallclock_minutes: 1440
+
+eval_every: 20
+eval_episodes: 256
+eval_mirror_episodes: 128
+eval_max_steps: 4096
+eval_max_seconds: 600
+checkpoint_every: 10
+keep_last: 10
+min_delta: 0.01
+
+learning_rate: 0.0002
+learning_rate_final: 0.00005
+entropy_coef: 0.02
+entropy_coef_final: 0.003
+epochs: 4
+target_kl: 0.02
+gamma: 0.99
+gae_lambda: 0.95
+clip_ratio: 0.2
+value_coef: 0.5
+grad_clip: 0.5
+
+team_size: 3
+cost_limit: 8.0
+max_turns: 200
+roster_repeat_episodes: 4
+mirror_ratio: 0.15
+
+reward_hp_delta: 0.05
+reward_kill: 0.15
+reward_action_success: 0.005
+reward_no_progress: -0.02
+reward_fence_delta: 0.10
+reward_shield_delta: 0.02
+reward_effect_delta: 0.01
+reward_win: 1.0
+reward_lose: -1.0
+reward_draw: 0.0
+
+selfplay_current_ratio: 0.40
+selfplay_heuristic_ratio: 0.20
+selfplay_random_ratio: 0.10
+selfplay_pool_size: 24
+selfplay_top_k: 8
+selfplay_temperature: 0.05
+selfplay_snapshot_every: 20

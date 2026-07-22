@@ -54,3 +54,15 @@ def test_damage_action_is_not_penalized_as_no_progress():
     value = reward.step(learning, enemy, action_success=False)
     assert value > 0
     assert not reward.last_no_progress
+
+
+def test_timeout_is_always_draw_even_if_a_winner_name_is_supplied():
+    learning = CombatTeam([10])
+    enemy = CombatTeam([10])
+    reward = RewardHandler()
+    reward.reset(learning, enemy)
+    value = reward.step(
+        learning, enemy, done=True,
+        winner="学习方", timeout=True,
+    )
+    assert value == reward.config["draw"]

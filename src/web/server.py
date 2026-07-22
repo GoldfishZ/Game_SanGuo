@@ -15,6 +15,7 @@ from src.models.game_flow import GameFlowController, Player
 from src.models.general import General
 from src.models.team import Team
 from src.battle.battle_system import BattleSystem
+from src.battle.rules_service import BattleRulesService
 from src.game_data.generals_data import GENERALS_DATA
 from src.game_data.generals_bios import GENERALS_BIOGRAPHY
 from src.game_data.skills_config import ALL_SKILLS
@@ -65,6 +66,7 @@ class GameState:
         self.controller: GameFlowController = None
         self.phase = "menu"
         self.battle_system: BattleSystem = None
+        self.rules = None
         self.battle_callbacks = None
         self.last_event = ""
         self.turn_count = 0
@@ -101,6 +103,7 @@ class GameState:
         self.pool_p1, self.pool_p2 = self._make_distinct_pools()
         self.phase = "select_p1"
         self.battle_system = None
+        self.rules = None
         self.last_event = "游戏已初始化"
         self.turn_count = 0
         self.winner = ""
@@ -112,14 +115,27 @@ class GameState:
         """结束 Web 战斗，并把引擎队名统一转换为前端玩家名。"""
         if not self.battle_system or not self.controller:
             return
-        winner_team = self.battle_system._determine_winner()
+        outcome = self.rules.outcome() if self.rules else BattleRulesService(self.battle_system).outcome()
         self.phase = "over"
-        self.winner = winner_team
+        if outcome.timeout:
+            self.winner = "平局"
+            self.last_event = "战斗结束：达到回合上限，本局平局"
+            return
+        winner_team = outcome.winner
+        self.winner = winner_team or "平局"
         for player in (self.controller.player1, self.controller.player2):
             if player.team.team_name == winner_team:
                 self.winner = player.name
                 break
         self.last_event = f"战斗结束，{self.winner} 获胜"
+
+    def ensure_rules(self):
+        """兼容测试/旧调用方直接注入 BattleSystem，同时维持单一规则入口。"""
+        if self.battle_system is not None and (
+            self.rules is None or self.rules.battle_system is not self.battle_system
+        ):
+            self.rules = BattleRulesService(self.battle_system)
+        return self.rules
 
     def clear_combat_events(self):
         """清空双方武将的表现事件，确保一次接口只返回本次结算。"""
@@ -365,6 +381,7 @@ def handle_api(path, body, handler):
             callbacks=None,
             first_player_team_name=c.first_player.team.team_name,
         )
+        STATE.rules = BattleRulesService(STATE.battle_system)
         STATE.battle_system.turn_count = 1
         STATE.turn_count = 1
         STATE.battle_system.current_side.update_effects()
@@ -378,21 +395,18 @@ def handle_api(path, body, handler):
             STATE.finish_battle()
             return STATE.to_json()
 
-        # 与 BattleSystem.run 保持一致：拉锯战达到上限时按剩余生命判胜。
+        # 权威规则：达到回合上限一律平局。
         if bs.turn_count >= bs.max_turns:
             STATE.finish_battle()
             return STATE.to_json()
 
         # 回合结束后切换；效果只在新行动方回合开始时结算一次。
         STATE.clear_combat_events()
-        morale_event = bs._end_turn_cleanup()
-        ending_team = "p1" if bs.current_side == c.player1.team else "p2"
+        turn_result = STATE.ensure_rules().end_turn()
+        morale_event = turn_result["morale_event"]
+        ending_team = "p1" if turn_result["ending_team"] == c.player1.team.team_name else "p2"
         morale_event["team"] = ending_team
-        bs._switch_to_next_player()
-        bs.turn_count += 1
         STATE.turn_count = bs.turn_count
-        # 新回合方也更新效果（防栅重建等）
-        bs.current_side.update_effects()
         turn_events = [morale_event] + STATE.drain_combat_events()
         current_player = c.player1.name if bs.current_side == c.player1.team else c.player2.name
         STATE.last_event = f"第{STATE.turn_count}回合，轮到{current_player}行动"
@@ -490,7 +504,7 @@ def handle_api(path, body, handler):
             # 攻速判定猜奇偶（如雷击需要）
             guess = body.get("guess", None)
             STATE.clear_combat_events()
-            skill_result = caster.use_active_skill(targets, bs.battle_context, caster_team, guess=guess)
+            skill_result = STATE.ensure_rules().skill_targets(caster, targets, guess=guess)
             STATE.last_event = f"{caster.name} 使用 {caster.active_skill.name}" if skill_result.get("success") else (skill_result.get("message") or "技能失败")
             if skill_result.get("success"):
                 detail = skill_result.get("details", [])
@@ -563,7 +577,8 @@ def handle_api(path, body, handler):
             target_pos_before = (c.player1.team.get_general_position(target) or
                                 c.player2.team.get_general_position(target))
             STATE.clear_combat_events()
-            dmg = attacker.attack(target, guess)
+            attack_result = STATE.ensure_rules().attack(attacker, target, guess=guess)
+            dmg = attack_result.get("damage", 0)
             if speed_mode and attacker.last_attack_speed_judgment:
                 speed_judgment = dict(attacker.last_attack_speed_judgment)
                 speed_judgment["mode"] = speed_mode
@@ -584,13 +599,7 @@ def handle_api(path, body, handler):
                 and speed_judgment
                 and not speed_judgment["success"]
             )
-            attack_result = {
-                "damage": dmg,
-                "performed": attack_performed,
-                "target_hp_before": target_hp_before,
-                "target_hp_after": target.current_hp,
-                "events": STATE.drain_combat_events(),
-            }
+            attack_result.update({"events": STATE.drain_combat_events()})
             # 保留位置快照，便于未来阵型类普攻效果给出准确提示。
             target_pos_after = (c.player1.team.get_general_position(target) or
                                c.player2.team.get_general_position(target))

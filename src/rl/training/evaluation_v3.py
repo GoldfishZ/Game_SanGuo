@@ -1,36 +1,30 @@
-"""固定 seed 的策略评估，并对病态策略提供有限时长保护。"""
+"""支持固定/镜像阵容的 v3 策略评估。"""
 from __future__ import annotations
 
 import time
 
-from src.rl.env import SanguoEnv
+from src.rl.env_v3 import SanguoEnv
 from src.rl.evaluation.strength import GeneralStrengthTracker
 from src.rl.policy import TorchPolicy
 
 
 def evaluate(model, device, opponent, *, episodes=64, seed_base=20260800,
              max_steps_per_episode=4096, max_seconds=300, policy=None,
-             env_config=None):
-    """评估确定性策略。
-
-    非推进策略可能重复选择同一动作，因此每局和整次评估都必须有硬上限。
-    超限局记为 timeout/draw，永远不计入胜利。
-    """
+             env_config=None, reset_options=None):
     policy = policy or TorchPolicy(model, device=device, deterministic=True)
     tracker = GeneralStrengthTracker()
     wins = losses = draws = timeouts = 0
-    turns = []
-    steps = []
+    turns, steps = [], []
     deadline = time.monotonic() + max_seconds
+    reset_options = dict(reset_options or {})
 
     for offset in range(episodes):
         if time.monotonic() >= deadline:
-            # 未启动的剩余局同样按 timeout 处理，保证结果总数可解释。
             timeouts += episodes - offset
             draws += episodes - offset
             break
         env = SanguoEnv(opponent, **(env_config or {}))
-        observation, info = env.reset(seed_base + offset)
+        observation, info = env.reset(seed_base + offset, **reset_options)
         done = False
         count = 0
         damage = {}
@@ -38,15 +32,14 @@ def evaluate(model, device, opponent, *, episodes=64, seed_base=20260800,
             action = policy.select_action(observation, info["action_mask"], env.rng)
             observation, _, done, info = env.step(action)
             result = info.get("result") or {}
-            if result.get("success") and result.get("attacker_id") is not None:
-                damage[result["attacker_id"]] = damage.get(result["attacker_id"], 0.0) + result.get("damage", 0.0)
+            source_id = result.get("attacker_id", result.get("caster_id"))
+            if result.get("success") and source_id is not None:
+                damage[source_id] = damage.get(source_id, 0.0) + result.get("damage", 0.0)
             count += 1
-
         timed_out = not done
         if timed_out:
             timeouts += 1
             draws += 1
-            # 仍保留局面统计，但不给任何一方虚假胜利。
             tracker.record_episode(env.learning_team, env.enemy_team, "", damage)
         else:
             winner = env.battle_system._determine_winner()
@@ -59,7 +52,6 @@ def evaluate(model, device, opponent, *, episodes=64, seed_base=20260800,
             tracker.record_episode(env.learning_team, env.enemy_team, winner, damage)
         turns.append(env.battle_system.turn_count)
         steps.append(count)
-
     completed = len(steps)
     return {
         "win_rate": wins / episodes,

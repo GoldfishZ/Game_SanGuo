@@ -11,7 +11,8 @@ sys.path.insert(0, str(ROOT))
 from src.rl.env import SanguoEnv
 from src.rl.opponents import HeuristicOpponent, RandomOpponent
 from src.rl.policy import RandomPolicy, TorchPolicy
-from src.rl.observation import OBSERVATION_SIZE
+from src.rl.observation import OBSERVATION_SCHEMA, OBSERVATION_SIZE
+from src.rl.training.checkpoint import CheckpointManager
 
 
 def load_policy(checkpoint, device):
@@ -21,9 +22,15 @@ def load_policy(checkpoint, device):
         import torch
     except ImportError as error:
         raise SystemExit("加载 checkpoint 需要 PyTorch：pip install torch") from error
-    from src.rl.models.actor_critic import ActorCritic
+    from src.rl.models.actor_critic import ActorCritic, MODEL_SCHEMA
+    state = torch.load(checkpoint, map_location=device)
+    CheckpointManager.validate_schema(
+        state, observation_schema=OBSERVATION_SCHEMA,
+        observation_size=OBSERVATION_SIZE, action_size=SanguoEnv.action_size,
+        model_schema=MODEL_SCHEMA,
+    )
     model = ActorCritic(OBSERVATION_SIZE, SanguoEnv.action_size)
-    model.load_state_dict(torch.load(checkpoint, map_location=device)["model"])
+    model.load_state_dict(state["model"])
     model.eval()
     return TorchPolicy(model, device=device)
 
@@ -47,11 +54,11 @@ def main():
         while not done:
             action = policy.select_action(observation, info["action_mask"], env.rng)
             observation, _, done, info = env.step(action)
-        winner = env.battle_system._determine_winner()
-        if winner == env.learning_team.team_name:
-            wins += 1
-        elif env.battle_system.turn_count >= env.battle_system.max_turns:
+        outcome = env.rules.outcome()
+        if outcome.timeout:
             draws += 1
+        elif outcome.winner == env.learning_team.team_name:
+            wins += 1
         else:
             losses += 1
         turns.append(env.battle_system.turn_count)

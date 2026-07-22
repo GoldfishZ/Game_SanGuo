@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+from dataclasses import asdict, is_dataclass
 import json
 from pathlib import Path
 from time import strftime
@@ -15,6 +16,7 @@ class TrainLogger:
         self.csv_file = (self.path / "metrics.csv").open("w", newline="", encoding="utf-8")
         self.writer = csv.DictWriter(self.csv_file, fieldnames=("step", "tag", "value"))
         self.writer.writeheader()
+        self.episodes_file = (self.path / "episodes.jsonl").open("a", encoding="utf-8")
         self.summary_writer = None
         try:
             from torch.utils.tensorboard import SummaryWriter
@@ -39,7 +41,16 @@ class TrainLogger:
         self.csv_file.flush()
         print({"update": step, **{key: round(value, 5) for key, value in flattened.items()}}, flush=True)
 
+    def log_episodes(self, step, summaries):
+        for summary in summaries:
+            payload = asdict(summary) if is_dataclass(summary) else dict(summary)
+            payload["update"] = step
+            self.episodes_file.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        if summaries:
+            self.episodes_file.flush()
+
     def close(self):
         if self.summary_writer:
             self.summary_writer.close()
+        self.episodes_file.close()
         self.csv_file.close()

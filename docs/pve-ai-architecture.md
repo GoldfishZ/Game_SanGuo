@@ -166,30 +166,34 @@ synergy_events
 
 ### 4.3 当前 telemetry 缺口
 
-当前 `RolloutFragment` 只回传 transition arrays：
+旧版 `RolloutFragment` 只回传 transition arrays；v2 已扩展为：
 
 ```text
 observations, masks, actions, log_probs,
 rewards, values, dones, bootstrap_value
 ```
 
-它没有回传 `episode_summaries`。因此多 worker 训练中：
+它现在会回传 `episode_summaries`，并将 seed、对手版本、阵容、阵型、技能使用、
+伤害归因与协同事件写入每个 run 的 `episodes.jsonl`。因此多 worker 的
+`rollout/*`、`general/*` 和 `balance/*` 已使用真实完成 episode；截断 episode
+仅参与 GAE。
 
 ```text
-rollout/win_rate = 占位值
-rollout/loss_rate = 占位值
-rollout/draw_rate = 占位值
-general/* 不从 worker rollout 实时产生
+rollout/win_rate = 真实完成局统计
+rollout/loss_rate = 真实完成局统计
+rollout/draw_rate = 真实完成局统计
+general/* = worker 终局快照聚合
 ```
 
-补齐 worker episode summaries 是后续的第一个前置工作。它会同时解锁：
+下一步是在现有 episode telemetry 上增加按需的逐 step 离线表和反事实任务。
+当前数据已经解锁：
 
 - 真实多 worker 武将强度统计；
 - Draft/Formation 训练标签；
 - 协同事件统计；
 - 对局 replay、反事实与平衡工具。
 
-推荐保存为按 run 分区的表格数据，例如：
+当前按 run 保存为 JSONL；数据量增大后可离线转换为 Parquet：
 
 ```text
 artifacts/rl/episodes/<run-id>/
@@ -390,7 +394,7 @@ BattlePolicy：战斗阶段实时操作
 
 - 使用严格时间切分：value model 训练数据必须早于待评估 checkpoint；
 - 记录 opponent checkpoint 版本；
-- 修复 observation 中“凉/他”阵营编码混淆后，再将阵营作为正式 value-model 特征；
+- observation v2 已区分凉/他，value model 可复用同一六阵营注册表；
 - Web PvE 使用双方独立候选池语义，而不是当前 RL env 的共享洗牌 roster 语义。
 
 ---
@@ -399,11 +403,12 @@ BattlePolicy：战斗阶段实时操作
 
 ### Stage 0：遥测基础设施
 
-- 扩展 `RolloutFragment`，回传 `episode_summaries`；
-- 汇总 worker episode 数据，修复多 worker win/loss/strength 占位指标；
-- 记录 step 与 episode 数据；
-- 完整区分六个阵营；
-- 为技能添加可归因伤害事件。
+- [x] 扩展 `RolloutFragment`，回传 `episode_summaries`；
+- [x] 汇总 worker episode 数据，修复多 worker win/loss/strength；
+- [x] 记录 episode 数据与可重放 seed；
+- [x] observation v2 完整区分六个阵营；
+- [x] 为技能添加按施法者归因的实际生命伤害；
+- [ ] 按需增加完整逐 step Parquet 导出。
 
 **验证产物：** 每个 run 都能输出真实 episode 表、真实 general telemetry 和可重放 seed。
 
@@ -459,7 +464,7 @@ BattlePolicy：战斗阶段实时操作
 | 主题 | 文件 |
 |---|---|
 | 当前战斗 RL 环境、随机选将/布阵 | `src/rl/env.py` |
-| 365 维战斗 observation | `src/rl/observation.py` |
+| 可版本化 observation v2 | `src/rl/observation.py` |
 | 722 动作与 mask | `src/rl/actions.py` |
 | 奖励 | `src/rl/reward.py` |
 | 多 worker fragment | `src/rl/training/vector_env.py` |
@@ -477,7 +482,7 @@ BattlePolicy：战斗阶段实时操作
 
 在把机制作为正式 AI 特征前，先核对以下问题：
 
-1. `observation.py` 当前未完全区分凉/他阵营；
+1. `observation.py` 的离散注册表属于 schema；新增阵营、技能或效果时必须提升版本；
 2. 防栅的重建行为在 passive 实现、General 调用和已有文档之间需要确认最终规则；
 3. 当前 Web 使用双方独立候选池，RL env 使用共享洗牌 roster；未来 PvE DraftPolicy 必须遵循 Web 的真实候选池规则；
 4. 当前 `practical_strength = win_rate - 0.5` 是单将实战统计，不能直接等同于阵容价值或协同价值。

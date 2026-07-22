@@ -1,0 +1,35 @@
+# 第一轮正式 CUDA self-play：为日常使用预留 2 个物理核心，并以低优先级后台运行。
+stage: selfplay
+seed: 20260721
+device: cuda
+num_workers: 6
+rollout_steps: 4096
+minibatch_size: 256
+artifact_root: artifacts/rl/round_01_cuda
+
+max_updates: 500
+schedule_updates: 500
+max_wallclock_minutes: 480
+
+eval_every: 20
+eval_episodes: 96
+eval_max_steps: 4096
+eval_max_seconds: 300
+checkpoint_every: 10
+keep_last: 8
+
+learning_rate: 0.0003
+learning_rate_final: 0.0001
+entropy_coef: 0.05
+entropy_coef_final: 0.01
+epochs: 4
+target_kl: 0.015
+
+selfplay_current_ratio: 0.5
+selfplay_pool_size: 24
+selfplay_top_k: 8
+selfplay_temperature: 0.25
+selfplay_snapshot_every: 20
+
+# timeout 统一按平局处理；第一轮不额外惩罚平局，后续再按指标逐步调整。
+reward_draw: 0.0
