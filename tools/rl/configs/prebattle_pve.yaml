@@ -1,0 +1,12 @@
+# PvE 选将/布阵价值模型：使用较早 update 训练，较晚 update 验证。
+episodes: artifacts/rl/round_v3/runs/selfplay-v3-round-01/episodes.jsonl
+output: artifacts/rl/pve/prebattle_value.pt
+min_update: 200
+validation_update: 501
+max_train: 160000
+max_validation: 40000
+epochs: 8
+batch_size: 1024
+learning_rate: 0.001
+device: auto
+seed: 20260723

@@ -32,6 +32,11 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
 .menu-title{font-size:clamp(26px,5vw,42px);color:var(--gold);letter-spacing:.14em;text-shadow:0 2px 16px rgba(180,150,80,.25);text-align:center}
 .menu-sub{font-size:clamp(11px,2vw,14px);color:var(--muted);letter-spacing:.1em;text-align:center;margin-bottom:clamp(8px,1.5vh,16px)}
 .menu-intro{font-size:clamp(12px,1.5vw,16px);color:var(--text);text-align:center;line-height:1.8;margin-bottom:clamp(12px,2vh,24px);max-width:500px}
+.game-mode-picker{display:grid;grid-template-columns:repeat(2,minmax(230px,330px));gap:14px;width:min(700px,94vw);margin:2px auto 8px}
+.mode-card{appearance:none;text-align:left;padding:16px 18px;background:linear-gradient(145deg,rgba(45,32,19,.96),rgba(18,13,9,.96));border:1px solid #5d4930;border-radius:8px;color:var(--text);cursor:pointer;box-shadow:0 12px 28px rgba(0,0,0,.28);transition:transform .18s,border-color .18s,background .18s}
+.mode-card:hover{transform:translateY(-2px);border-color:var(--gold);background:linear-gradient(145deg,rgba(62,42,23,.98),rgba(24,17,10,.98))}
+.mode-card strong,.mode-card small,.mode-card span{display:block}.mode-card strong{margin:5px 0 7px;color:var(--gold-bright);font:800 clamp(16px,2vw,21px)/1.2 "KaiTi",serif;letter-spacing:.08em}.mode-card small{color:#a99a7d;font-size:11px;line-height:1.55}.mode-kicker{color:#846f4d;font-size:9px;letter-spacing:.2em}.mode-card.pve{border-color:#8c6c37}.mode-card.pve::after{content:"AI";float:right;margin-top:-50px;color:rgba(217,182,105,.18);font:900 30px/1 Georgia,serif}
+@media(max-width:600px){.game-mode-picker{grid-template-columns:1fr}.mode-card{padding:13px 15px}}
 
 /* Faction quick-intro bar */
 .faction-bar{display:flex;justify-content:center;gap:clamp(6px,1vw,12px);flex-wrap:wrap;margin-top:clamp(14px,2vh,24px)}
@@ -265,6 +270,13 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
 .bamboo .rule{margin-bottom:clamp(8px,1.5vh,16px);border-left:3px solid #8a6a3a;padding-left:clamp(6px,1vw,12px)}
 .bamboo .rule h3{font-size:clamp(11px,1.4vw,15px);color:#2a1408;margin-bottom:1px}
 .bamboo .rule p{font-size:clamp(10px,1.2vw,13px);color:#4a2a10;line-height:1.5}
+.rules-lead{margin:-3px 0 16px;padding:10px 12px;border:1px solid rgba(92,59,27,.28);background:rgba(255,247,221,.28);color:#4a2a10;font-size:clamp(11px,1.25vw,13px);line-height:1.65}
+.rules-section{margin:0 0 18px}.rules-section>h3{margin:0 0 8px;padding:5px 9px;border-left:4px solid #7b3d26;background:linear-gradient(90deg,rgba(123,61,38,.14),transparent);color:#3c1b0c;font:900 clamp(14px,1.7vw,18px)/1.3 "KaiTi",serif;letter-spacing:.08em}
+.rules-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}.rule-card,.trait-rule{border:1px solid rgba(88,57,29,.28);background:rgba(255,248,226,.28);box-shadow:inset 0 0 18px rgba(75,44,20,.04)}
+.rule-card{padding:9px 10px}.rule-card>b{display:block;margin-bottom:4px;color:#552615;font:900 14px/1.2 "KaiTi",serif}.rule-card p,.trait-rule p{color:#4a2a10;font-size:clamp(10px,1.15vw,12px);line-height:1.65}.rule-card strong,.trait-rule strong{color:#71311d}
+.trait-rules-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.trait-rule{position:relative;padding:9px 10px 10px;border-left:4px solid #71503c}.trait-rule header{display:grid;grid-template-columns:27px auto 1fr;align-items:center;gap:6px;margin-bottom:5px}.trait-rule header i{display:grid;place-items:center;width:26px;height:26px;border:2px solid;border-radius:50%;font:900 13px/1 "KaiTi",serif;font-style:normal}.trait-rule header b{color:#452013;font:900 15px/1 "KaiTi",serif}.trait-rule header span{text-align:right;color:#876642;font:700 9px/1.2 "FangSong",serif;letter-spacing:.08em}.trait-rule p+p{margin-top:4px}
+.trait-rule.bravery{border-left-color:#9c3f31}.trait-rule.bravery header i{color:#a73e2d;border-color:#a73e2d}.trait-rule.charisma{border-left-color:#80527c}.trait-rule.charisma header i{color:#7d4479;border-color:#7d4479}.trait-rule.recruit{border-left-color:#55785b}.trait-rule.recruit header i{color:#4d7454;border-color:#4d7454}.trait-rule.fence{border-left-color:#60797b}.trait-rule.fence header i{color:#506f72;border-color:#506f72}.trait-rule.chain{border-left-color:#92743a}.trait-rule.chain header i{color:#806128;border-color:#806128}.trait-rule.revive{border-left-color:#a1833f}.trait-rule.revive header i{color:#92742e;border-color:#92742e}.trait-rule.ambush{border-left-color:#4e6268}.trait-rule.ambush header i{color:#415c63;border-color:#415c63}
+@media(max-width:720px){.rules-grid,.trait-rules-grid{grid-template-columns:1fr}.bamboo{padding:14px}.rules-section{margin-bottom:14px}}
 
 /* ===== Gallery ===== */
 .gallery-card{width:clamp(180px,25vw,320px);max-width:320px}
@@ -628,9 +640,10 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
 .bcell.casting{animation:castingCard .72s var(--ease-weight) both!important}
 @keyframes castingCard{0%{transform:translateY(-8px) scale(1.07)}35%{transform:translateY(-24px) scale(1.14) rotateX(4deg)}100%{transform:translateY(-12px) scale(1.09)}}
 .bcell.attack-anticipation{transform:translateX(-5px) rotateY(-3deg) scale(.98)}
-.bcell.defeated-card{filter:grayscale(1) brightness(.38)!important;transform:rotateZ(-4deg) translateY(10px) scale(.9)!important;opacity:.45}
-.bcell.defeated-card::before{content:"败";position:absolute;z-index:40;left:50%;top:48%;display:grid;place-items:center;width:45%;aspect-ratio:1;
-  transform:translate(-50%,-50%) rotate(-10deg);border:3px double rgba(137,36,27,.9);border-radius:50%;color:rgba(167,44,31,.92);font:900 clamp(20px,3vw,42px)/1 "KaiTi",serif;background:rgba(30,8,5,.14)}
+.bcell.defeated-card,.bcell.dead.defeated-card{animation:none!important;filter:grayscale(1) brightness(.36)!important;transform:translateY(6px) scale(.92)!important;opacity:.58!important;pointer-events:none}
+.bcell.defeated-card::before{content:"已阵亡";position:absolute;z-index:40;left:50%;top:48%;display:grid;place-items:center;width:72%;height:28%;
+  transform:translate(-50%,-50%) rotate(-7deg);border:3px double rgba(137,36,27,.92);border-radius:2px;color:rgba(189,61,45,.96);font:900 clamp(12px,1.8vw,21px)/1 "KaiTi",serif;letter-spacing:.12em;background:rgba(30,8,5,.5);text-shadow:0 1px 2px #000;animation:none!important;opacity:1!important}
+.bcell.dead.defeated-card::after{display:none}
 
 .bcell.range-attack{outline:2px solid rgba(176,55,38,.9);outline-offset:-2px}
 .bcell.range-skill{outline:2px solid rgba(101,133,112,.92);outline-offset:-2px}
@@ -653,6 +666,14 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
 .trait-ribbon{position:absolute;z-index:24;left:3px;top:3px;display:flex;flex-direction:column;gap:2px;pointer-events:none}
 .trait-mark{display:grid;place-items:center;width:17px;height:17px;border:1px solid rgba(226,208,165,.38);border-radius:50%;color:#eee0bd;background:rgba(12,9,6,.86);font:800 9px/1 "KaiTi",serif;box-shadow:0 2px 5px #000}
 .trait-勇猛{border-color:#93443a;color:#e3977e}.trait-魅力{border-color:#76516f;color:#d6a3ca}.trait-募兵{border-color:#55755c;color:#a8c5a5}.trait-防栅{border-color:#667879;color:#b5c2bd}.trait-连计{border-color:#8a713e;color:#d0b46f}.trait-复活{border-color:#947a49;color:#e3c987}.trait-伏兵{border-color:#4e5e68;color:#a3b8bf}
+.passive-readiness{position:absolute;z-index:30;left:23px;top:3px;padding:2px 5px;border:1px solid;border-radius:2px;background:rgba(12,8,7,.88);font:800 8px/1.15 "FangSong",serif;letter-spacing:.04em;pointer-events:none;box-shadow:0 2px 5px #000}
+.bravery-readiness{color:#a87b70;border-color:#624039}.bravery-readiness.ready{color:#ffc0a7;border-color:#b94b38;background:rgba(68,17,12,.92);animation:braveryReadyPulse 1.45s ease-in-out infinite}
+.charisma-readiness{top:24px;color:#d8a8d2;border-color:#79516f;background:rgba(47,20,46,.9)}.charisma-readiness.resolved{color:#a481a0;border-color:#594154}
+@keyframes braveryReadyPulse{0%,100%{box-shadow:0 0 4px rgba(183,55,38,.25)}50%{box-shadow:0 0 14px rgba(213,70,45,.78);transform:translateY(-1px)}}
+.bcell.bravery-trigger.passive-success{animation:braveryRoar .8s ease!important}.bcell.bravery-trigger.passive-failure{filter:saturate(.55)}
+.bcell.charisma-trigger.passive-success{animation:charismaFlash .9s ease!important}.bcell.charisma-trigger.passive-failure{filter:grayscale(.45)}
+.bcell.charisma-reflected-hit{animation:charismaReflectedHit .72s ease!important}
+@keyframes charismaReflectedHit{35%{filter:hue-rotate(285deg) brightness(1.55);box-shadow:0 0 34px rgba(180,86,174,.9);transform:translateY(-4px) scale(1.04)}}
 .passive-fence{position:absolute;z-index:29;top:10%;width:12px;height:78%;filter:drop-shadow(0 3px 3px #000);pointer-events:none}
 #bside1 .passive-fence{right:-8px}#bside2 .passive-fence{left:-8px}
 .passive-fence::before,.passive-fence::after{content:"";position:absolute;z-index:2;left:-2px;width:16px;height:3px;background:#7e6544;border:1px solid #322617;transform:rotate(-3deg)}.passive-fence::before{top:28%}.passive-fence::after{top:67%;transform:rotate(4deg)}
@@ -774,3 +795,15 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
   .table-map-mark,.bf-clash,.bcell.selected,.btn.guide-next,.skill-closeup,.skill-closeup-portrait img,.bcell.resolve-lightning,.shaking,.shaking-strong{animation:none!important}
   .bcell,.btn{transition-duration:.01ms!important}
 }
+
+
+/* PvE enemy ambushes are identity-safe silhouettes until the server reveals them. */
+.bcell.ambush-concealed{opacity:1;filter:none;background:radial-gradient(circle at 50% 38%,#314746 0,#182827 42%,#090f10 100%);border:1px dashed rgba(164,194,185,.52);overflow:hidden;box-shadow:inset 0 0 24px rgba(0,0,0,.85),0 5px 16px rgba(0,0,0,.34)}
+.bcell.ambush-concealed .cname{color:#c2d3ce;text-shadow:0 2px 5px #000}.bcell.ambush-concealed .chp{color:#819792}.ambush-seal{position:absolute;z-index:5;inset:18% 22% 32%;display:grid;place-items:center;border:1px solid rgba(180,207,198,.5);border-radius:50%;color:#d1e0db;font:900 clamp(19px,3vw,36px)/1 "KaiTi",serif;text-shadow:0 3px 8px #000;box-shadow:0 0 20px rgba(118,164,153,.22)}
+.ambush-fog,.ambush-fog i{position:absolute;inset:-20%;border-radius:50%;background:radial-gradient(ellipse,rgba(115,151,142,.24),rgba(15,27,27,0) 66%);animation:ambushFogDrift 4.2s ease-in-out infinite alternate}.ambush-fog i:nth-child(1){transform:translate(-18%,12%) scale(.7);animation-delay:-1.3s}.ambush-fog i:nth-child(2){transform:translate(22%,-8%) scale(.82);animation-delay:-2.6s}.ambush-fog i:nth-child(3){transform:translate(8%,22%) scale(.62);animation-delay:-3.4s}
+.bcell.ambush-revealing{z-index:42;animation:ambushIdentityReveal .72s cubic-bezier(.2,.85,.3,1);box-shadow:0 0 28px rgba(177,214,202,.75)}
+.bcell.ambush-counter-hit{animation:ambushCounterHit .48s ease-out}
+
+@keyframes ambushFogDrift{from{transform:translate3d(-6%,-2%,0) scale(.9);opacity:.52}to{transform:translate3d(8%,5%,0) scale(1.12);opacity:.92}}
+@keyframes ambushIdentityReveal{0%{filter:brightness(.12) blur(4px);transform:scale(.8) rotate(-2deg)}45%{filter:brightness(1.8) blur(0);transform:scale(1.1) rotate(1deg)}100%{filter:none;transform:scale(1)}}
+@keyframes ambushCounterHit{0%{transform:translateX(0);filter:brightness(1)}30%{transform:translateX(-7px);filter:brightness(2)}60%{transform:translateX(5px);filter:brightness(.65)}100%{transform:translateX(0);filter:brightness(1)}}

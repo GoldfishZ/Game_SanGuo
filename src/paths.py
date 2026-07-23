@@ -12,6 +12,8 @@ else:
     PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 ASSETS_DIR = PROJECT_ROOT / "assets"
+MODELS_DIR = ASSETS_DIR / "models"
+PVE_MODELS_DIR = MODELS_DIR / "pve"
 IMAGES_DIR = ASSETS_DIR / "images"
 GENERALS_DIR = IMAGES_DIR / "generals"
 GENERALS_WEBP_DIR = IMAGES_DIR / "generals_webp"

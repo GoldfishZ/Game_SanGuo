@@ -97,7 +97,7 @@ python tools/rl/train_ppo.py --config tools/rl/configs/ppo_default.yaml
 - 产物：`artifact_root`（可用于隔离不同实验或 smoke）；
 - 退火：`schedule_updates`、`learning_rate(_final)`、`entropy_coef(_final)`；
 - PPO：`gamma`、`gae_lambda`、`clip_ratio`、`value_coef`、`target_kl`；
-- 环境：`team_size`、`cost_limit`、`max_turns`；
+- 环境：`team_size`（0=多阵容）、`min_team_size`、`max_team_size`、`team_size_power`、`roster_candidate_samples`、`roster_cost_bias`、`cost_limit`、`max_turns`；
 - 奖励：全部 `reward_*`；
 - self-play：全部 `selfplay_*`。
 
@@ -128,3 +128,26 @@ reward_draw: 0.0
 - 不依据小样本 `general/*` 直接调整武将数值。
 
 稳定后再把 `reward_draw` 调到 `-0.05`，观察是否减少拖平且没有诱发冒险送死。
+
+## 8. PvE 选将与布阵价值模型
+
+预战模型从本轮 `episodes.jsonl` 训练，并使用 update 时间切分而不是随机拆分。配置位于 `tools/rl/configs/prebattle_pve.yaml`：
+
+```powershell
+python tools/rl/train_prebattle.py --config tools/rl/configs/prebattle_pve.yaml
+```
+
+命令行参数可覆盖 YAML。训练输出仍写入被 Git 忽略的 `artifacts/rl/pve/prebattle_value.pt`，其中同时保存 `V_draft`、`V_form`、武将注册表、schema 和验证指标。确认战斗与预战模型可发布后执行：
+
+```powershell
+python tools/rl/promote_pve_models.py
+```
+
+发布脚本会验证 schema，并把选中的模型复制到 Git 跟踪的 `assets/models/pve/`。Web 运行时只默认读取该发布目录，因此新 clone 无需本机训练产物即可进入 PvE。部署时：
+
+- `DraftPolicy` 枚举候选池内满足费用上限的组合；
+- `FormationPolicy` 对1～4人阵容精确枚举；5人以上使用确定性的4096候选有界搜索；
+- 价值最高的合法候选交给 `src/rl/pve.py`；
+- 战斗继续使用 PPO checkpoint，三层规则都由服务端执行。
+
+当前 round_v3 数据的首次验证结果：Draft AUC 0.902、Formation AUC 0.877。该指标证明模型能从 held-out 后期对局区分相对价值，但不能替代固定 seed 的端到端胜率评估；后续还需与随机预战策略进行受控对局比较。

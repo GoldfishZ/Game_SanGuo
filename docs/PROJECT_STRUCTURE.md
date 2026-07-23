@@ -34,7 +34,9 @@
 
 - `requirements.txt`：游戏、测试和本地 RL 训练依赖。
 - `requirements/build.txt`：发行包构建依赖。
-- `assets/`：源图片及 WebP 运行图片。
+- `assets/`：需要随源码/发行版本交付的运行资源。
+  - `assets/images/`：源图片及 WebP 运行图片；
+  - `assets/models/pve/`：Git 跟踪的已验证 PvE 发布模型和 manifest。
 - `artifacts/`：测试报告和截图，不进入版本控制。
 - `build/`、`dist/`：PyInstaller 中间目录和发行文件，不进入版本控制。
 

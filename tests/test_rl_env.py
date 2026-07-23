@@ -4,6 +4,7 @@ import random
 import numpy as np
 
 from src.rl.env import SanguoEnv
+from src.game_data.generals_data import GENERALS_DATA
 from src.rl.observation import (
     ATTRIBUTES,
     BUFF_TYPES,
@@ -82,3 +83,29 @@ def test_observation_changes_for_fence_and_buff_runtime_state():
         with_fence = env.observation()
         fence.is_active = False
         assert not np.array_equal(with_fence, env.observation())
+
+
+def test_variable_roster_sampling_covers_multiple_legal_team_sizes():
+    env = SanguoEnv(
+        team_size=0, min_team_size=1, max_team_size=8,
+        team_size_power=1.0, roster_candidate_samples=128,
+        roster_cost_bias=0.8, cost_limit=8.0,
+    )
+    sizes = set()
+    for seed in range(80):
+        env.rng = random.Random(seed)
+        selection = env._choose_selection(GENERALS_DATA)
+        sizes.add(len(selection))
+        assert 1 <= len(selection) <= 8
+        assert sum(float(item["cost"]) for item in selection) <= 8.0
+
+    assert len(sizes) >= 5
+    assert max(sizes) > 3
+
+
+def test_fixed_team_size_sampling_remains_backward_compatible():
+    env = SanguoEnv(team_size=3, cost_limit=8.0)
+    env.rng = random.Random(7)
+    selection = env._choose_selection(GENERALS_DATA)
+    assert len(selection) == 3
+    assert sum(float(item["cost"]) for item in selection) <= 8.0

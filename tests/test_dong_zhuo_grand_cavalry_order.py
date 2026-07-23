@@ -4,12 +4,14 @@
 
 import os
 import sys
+from types import SimpleNamespace
 from unittest.mock import patch
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.game_data.generals_config import get_general_by_name
 from src.battle.battle_system import BattleContext
+from src.battle.rules_service import BattleRulesService
 from src.models.general import Camp, General, Rarity
 from src.models.team import Team
 
@@ -102,6 +104,33 @@ def test_grand_cavalry_order_attack_speed_judgment_can_double_attack():
     assert target.current_hp == target.max_hp - 14
     assert not dong_zhuo.can_attack()
 
+
+
+def test_grand_cavalry_order_works_through_shared_action_rules_without_area_selection():
+    """Web/RL 共享动作层应允许自动锁定董卓所在竖列。"""
+    dong_zhuo = get_general_by_name("董卓")
+    ally_same_row = make_general("同排骑兵")
+    team = Team("董卓队")
+    enemy_team = Team("敌队")
+    team.add_general(dong_zhuo)
+    team.add_general(ally_same_row)
+    team.position_general(dong_zhuo, 1, 0)
+    team.position_general(ally_same_row, 1, 1)
+    battle_context = BattleContext(team, enemy_team)
+    battle = SimpleNamespace(
+        team1=team,
+        team2=enemy_team,
+        current_side=team,
+        battle_context=battle_context,
+    )
+
+    result = BattleRulesService(battle).skill(dong_zhuo)
+
+    assert result["success"] is True
+    assert result["targets_affected"] == 2
+    assert team.current_morale == 5
+    assert dong_zhuo.get_effective_force() == 12
+    assert ally_same_row.get_effective_force() == 9
 
 if __name__ == "__main__":
     test_dong_zhuo_data_and_skill()

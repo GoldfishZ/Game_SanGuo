@@ -29,6 +29,8 @@ var selectedAttacker = null;        // 战斗中选中的己方武将 {general, 
 var galleryIdx = 0;
 var galleryFiltered = [];
 var _lastTurnSignature = "";
+var _aiTurnRunning = false;
+var _aiTurnGeneration = 0;
 
 /**
  * 轻量战场声音：全部由 Web Audio 实时合成，不加载外部音频文件。
@@ -241,9 +243,11 @@ function call(endpoint, body) {
 // ============================================================================
 // SECTION 3: 主菜单 & 选将
 // ============================================================================
-function startGame() {
+function startGame(mode) {
   _lastTurnSignature = "";
-  return call("/new").then(function() { return renderSelection(); });
+  _aiTurnRunning = false;
+  _aiTurnGeneration++;
+  return call("/new", { mode: mode || "pvp" }).then(function() { return renderSelection(); });
 }
 
 function renderSelection() {
@@ -839,15 +843,128 @@ function renderBattle() {
     highlightActiveSide(r);
     announceTurn(r);
 
-    setStatus(r.event || "点击己方武将，下达本回合军令");
+    setStatus(isComputerTurn(r) ? "电脑正在思考本回合军令……" : (r.event || "点击己方武将，下达本回合军令"));
     updateBattlePhaseUI();
     applySelectionRangePreview();
+    scheduleComputerTurn();
   } catch (e) {
     setStatus("渲染错误: " + e.message);
     console.error("renderBattle error:", e);
   }
 }
 
+function isComputerTurn(state) {
+  state = state || G;
+  return !!(state && state.mode === "pve" && state.phase === "battle" && state.current_team === state.ai_team);
+}
+
+function generalById(state, id) {
+  var all = [].concat((state && state.p1 && state.p1.generals) || [], (state && state.p2 && state.p2.generals) || []);
+  return all.find(function(general) { return general.id === id; }) || null;
+}
+
+function battleCellById(id) {
+  return document.querySelector('#scr-battle .bcell[data-id="' + id + '"]');
+}
+
+async function playComputerAction(action, beforeState) {
+  if (!action) return;
+  var actor = generalById(G, action.actor_id) || generalById(beforeState, action.actor_id);
+  var result = action.result || {};
+  if (action.kind === "end_skill") {
+    setStatus("电脑结束技能阶段，正在选择普攻……");
+    await sleep(700);
+    return;
+  }
+  if (action.kind === "end_attack") {
+    setStatus("电脑结束行动，正在交还回合……");
+    await playTurnEvents(action.turn_events || []);
+    await sleep(650);
+    return;
+  }
+  if (action.kind.indexOf("skill") === 0) {
+    var skillName = action.skill_name || (actor && actor.skill) || "武将技";
+    var skillId = action.skill_id || (actor && actor.skill_id) || "";
+    var skillType = detectSkillType(skillName);
+    var skillEvents = action.combat_events || [];
+    var revealEvents = skillEvents.filter(function(event) { return event.type === "ambush_reveal"; });
+    if (revealEvents.length) await playCombatEvents(revealEvents);
+    actor = generalById(G, action.actor_id) || actor;
+    setStatus("电脑：" + (action.actor_name || "武将") + " 使用 " + skillName);
+    if (result.judgment) result.judgment.actor_label = "电脑";
+    await showSkillCinematic(skillName, actor, skillType);
+    if (result.success) {
+      await playSkillResolution(result, skillName, skillType, skillId);
+      await playCombatEvents(skillEvents.filter(function(event) { return event.type !== "ambush_reveal"; }));
+    } else {
+      BattleAudio.play("failure");
+      await sleep(500);
+    }
+    return;
+  }
+  if (action.kind === "attack") {
+    setStatus("电脑：" + (action.actor_name || "武将") + " 普攻 " + (action.target_name || "目标"));
+    if (result.speed_judgment) {
+      result.speed_judgment.actor_label = "电脑";
+      result.speed_judgment.title = (action.actor_name || "电脑武将") + " · 攻速判定";
+      await showSpeedJudgment(result.speed_judgment);
+    }
+    var actorCell = battleCellById(action.actor_id);
+    var targetCell = battleCellById(action.target_id);
+    if (result.performed && actorCell && targetCell) {
+      var computerEvents = result.events || action.combat_events || [];
+      await playCombatEvents(computerEvents.filter(function(event) { return event.type === "bravery_judgment"; }));
+      await animAttack(actorCell, targetCell, result.damage || 0, result.target_hp_after <= 0);
+      await playCombatEvents(computerEvents.filter(function(event) { return event.type !== "bravery_judgment"; }));
+    } else {
+      BattleAudio.play("failure");
+      await sleep(500);
+    }
+  }
+}
+
+function scheduleComputerTurn() {
+  if (!isComputerTurn() || _aiTurnRunning) return;
+  var generation = _aiTurnGeneration;
+  setTimeout(function() { runComputerTurn(generation); }, window.__stressMode ? 0 : 750);
+}
+
+async function runComputerTurn(generation) {
+  if (_aiTurnRunning || !isComputerTurn() || generation !== _aiTurnGeneration) return;
+  _aiTurnRunning = true;
+  clearBattleSelection();
+  setStatus("电脑正在观察战场……");
+  try {
+    await sleep(650);
+    for (var step = 0; step < 64 && isComputerTurn(); step++) {
+      if (generation !== _aiTurnGeneration) return;
+      var beforeState = G;
+      var response = await call("/pve/step");
+      if (!response) {
+        setStatus("电脑行动请求失败，请检查服务器连接");
+        break;
+      }
+      if (response.ai_error) {
+        setStatus("电脑行动失败：" + response.ai_error);
+        break;
+      }
+      var action = response.ai_action;
+      if (!action || action.kind === "idle" || action.kind === "finished") break;
+      await playComputerAction(action, beforeState);
+      if (G && G.phase === "over") {
+        showGameOver();
+        return;
+      }
+      renderBattle();
+      if (isComputerTurn()) await sleep(900);
+    }
+  } catch (error) {
+    console.error("computer turn error:", error);
+    setStatus("电脑行动播放失败：" + error.message);
+  } finally {
+    _aiTurnRunning = false;
+  }
+}
 /**
  * 渲染一方战斗网格
  * @param {string} gridId - "bside1-grid" 或 "bside2-grid"
@@ -860,9 +977,11 @@ function renderBattle() {
 function renderBattleGrid(gridId, p, isAlly) {
   var grid = [[null,null,null,null], [null,null,null,null], [null,null,null,null]];
   if (p && p.generals) {
-    p.generals.forEach(function(g) {
-      if (g.row >= 0 && g.alive) grid[g.row][g.col] = g;
-    });
+    // 阵亡卡先放入展示网格；若极端情况下位置被存活武将占用，以存活者优先。
+    p.generals.slice().sort(function(a, b) { return Number(a.alive) - Number(b.alive); })
+      .forEach(function(g) {
+        if (g.row >= 0) grid[g.row][g.col] = g;
+      });
   }
 
   var cells = "";
@@ -884,11 +1003,25 @@ function renderBattleGrid(gridId, p, isAlly) {
 
 /** 构建单个武将格子的 HTML（纯函数，便于测试和维护） */
 function buildBcellHTML(g, r, c, gridRow, gridColumn, isAlly) {
+  if (g._ambushConcealed) {
+    return '<div class="bcell ambush-hidden ambush-concealed locked"' +
+      ' data-id="' + g.id + '" data-row="' + r + '" data-col="' + c + '"' +
+      ' data-isally="' + (isAlly ? "1" : "0") + '" data-name="未知伏兵"' +
+      ' style="grid-row:' + gridRow + ';grid-column:' + gridColumn + '">' +
+      '<div class="ambush-fog" aria-hidden="true"><i></i><i></i><i></i></div>' +
+      '<div class="ambush-seal">伏</div>' +
+      '<div class="cname">伏兵潜伏</div><div class="chp">身份未明</div>' +
+      '</div>';
+  }
   var hpPct = g.maxHp > 0 ? (g.hp / g.maxHp * 100) : 0;
   var hpClass = hpPct > 60 ? "" : (hpPct > 30 ? "warn" : "danger");
   var imgSrc = g.image ? "/generals/" + g.image : "";
   var selected = isAlly && selectedAttacker && selectedAttacker.general.id === g.id;
-  var hasActed = isAlly && (g._hasAttacked || g._hasUsedSkill);
+  var canAttack = !g._hasAttacked || g._hasExtraAttack;
+  var teamMorale = currentTeamData() ? (currentTeamData().morale || 0) : 0;
+  var hasUsableSkill = !!g.skill && g.skill !== "无" &&
+    !g.cooldown && !g._hasUsedSkill && teamMorale >= (g.skill_cost || 0);
+  var hasActed = g.alive && isAlly && !canAttack && !hasUsableSkill;
   var isLocked = !isAlly && battlePhase !== "target";
   var attrs = g.attributes || [];
 
@@ -897,7 +1030,7 @@ function buildBcellHTML(g, r, c, gridRow, gridColumn, isAlly) {
   if (selected) cls.push("selected");
   if (isLocked) cls.push("locked");
   if (hasActed) cls.push("acted");
-  if (!g.alive) cls.push("dead");
+  if (!g.alive) cls.push("dead", "defeated-card");
 
   if (attrs.indexOf("防栅") >= 0) {
     cls.push((g._fenceBroken || g.hp < g.maxHp) ? "fence-broken" : "fence");
@@ -917,10 +1050,28 @@ function buildBcellHTML(g, r, c, gridRow, gridColumn, isAlly) {
   var effIntel = g.effective_intelligence !== undefined ? g.effective_intelligence : (g.intelligence || 0);
   var attrStr = attrs.join(" · ") || "无属性";
   var shield = (g.buffs || []).find(function(effect) { return effect.type === "damage_shield"; });
+  var traitHelp = {
+    "勇猛":"生命严格低于一半时，普攻前猜奇偶；成功则本次伤害×1.5（四舍五入）",
+    "魅力":"受到致命伤害且未复活时猜奇偶；成功则向伤害来源反噬所受致命伤害的一半",
+    "募兵":"己方回合开始时，若生命未满则回复1点生命",
+    "防栅":"抵挡一次普通攻击，破碎后本局不再重建",
+    "连计":"存活的连计友军共享增益、减益，并平均分担伤害",
+    "复活":"首次阵亡时立刻以最大生命一半复活，每局一次",
+    "伏兵":"隐藏时不可被普攻选中；相邻友军受普攻时可反击一次，使用主动技能也会破隐"
+  };
   var statusHtml = '<div class="trait-ribbon">' + attrs.map(function(attr) {
     var icon = {"勇猛":"勇", "魅力":"魅", "募兵":"募", "防栅":"栅", "连计":"连", "复活":"生", "伏兵":"伏"}[attr] || attr.charAt(0);
-    return '<span class="trait-mark trait-' + attr + '" title="' + attr + '">' + icon + '</span>';
+    return '<span class="trait-mark trait-' + attr + '" title="' + (traitHelp[attr] || attr) + '">' + icon + '</span>';
   }).join("") + '</div>';
+  if (attrs.indexOf("勇猛") >= 0 && g.alive) {
+    var braveryText = g._braveryReady ? "勇猛待判" : "勇猛未蓄势";
+    if (g._braveryJudgment) braveryText = "勇猛已判·" + (g._braveryJudgment.success ? "成" : "败");
+    statusHtml += '<div class="passive-readiness bravery-readiness ' + (g._braveryReady ? "ready" : "") + '">' + braveryText + '</div>';
+  }
+  if (attrs.indexOf("魅力") >= 0) {
+    var charismaText = g._charismaJudgment ? "魅力已判·" + (g._charismaJudgment.success ? "成" : "败") : "魅力待命";
+    statusHtml += '<div class="passive-readiness charisma-readiness ' + (g._charismaReady ? "ready" : "resolved") + '">' + charismaText + '</div>';
+  }
   if (g._fenceActive) statusHtml += '<div class="passive-fence" aria-label="防栅尚未被攻破"><i></i><i></i><i></i></div>';
   if (shield) statusHtml += '<div class="damage-shield" aria-label="护盾可吸收' + shield.value + '点伤害"><span>盾</span><b>' + shield.value + '</b></div>';
   if (attrs.indexOf("连计") >= 0) statusHtml += '<div class="chain-link" aria-hidden="true"></div>';
@@ -957,7 +1108,7 @@ function buildBcellHTML(g, r, c, gridRow, gridColumn, isAlly) {
     '<div class="bcell-tip"><img src="' + (imgSrc || "") + '"><div class="tip-name">' + g.name +
     '</div><div class="tip-stat">武' + effForce + ' 智' + effIntel + ' | ' + (g.skill || "无") +
     '</div><div class="tip-attr">' + attrStr + '</div></div>' +
-    '<div class="cname">' + (g.alive ? g.name : "阵亡") + '</div>' +
+    '<div class="cname">' + (g.alive ? g.name : "已阵亡") + '</div>' +
     '<div class="chp">' + (g.alive ? g.hp + "/" + g.maxHp : "--") + '</div>' +
     '<div class="hpbar"><div class="hpf ' + hpClass + '" style="width:' + (g.alive ? hpPct : 0) + '%"></div></div>' +
     '</div>';
@@ -969,7 +1120,7 @@ function buildBcellHTML(g, r, c, gridRow, gridColumn, isAlly) {
 var _battleClickLock = false;
 (function initBattleDelegation() {
   document.addEventListener("click", function(e) {
-    if (_battleClickLock) return;
+    if (_battleClickLock || isComputerTurn()) return;
     var cell = e.target.closest(".bcell");
     if (!cell) return;
     if (cell.classList.contains("locked") || cell.classList.contains("empty") || cell.classList.contains("dead")) return;
@@ -999,6 +1150,18 @@ function updateBattlePhaseUI() {
   var attackBtn = document.getElementById("bact-attack");
   var skillBtn = document.getElementById("bact-skill");
   var skipBtn = document.getElementById("bact-skip");
+  if (isComputerTurn()) {
+    attackBtn.style.display = "none";
+    skillBtn.style.display = "none";
+    skipBtn.textContent = "电脑行动中";
+    skipBtn.style.opacity = ".45";
+    skipBtn.style.pointerEvents = "none";
+    document.getElementById("bphase").className = "phase-tag ph-skill";
+    document.getElementById("bphase").textContent = "电脑执令";
+    return;
+  }
+  skipBtn.style.opacity = "";
+  skipBtn.style.pointerEvents = "";
   var canAct = !!selectedAttacker && battlePhase !== "target";
   var selected = selectedAttacker ? selectedAttacker.general : null;
   var morale = currentTeamData() ? (currentTeamData().morale || 0) : 0;
@@ -1065,6 +1228,26 @@ function onBattleAllyCell(r, c) {
   }
 }
 
+/** 按权威伤害公式估算本次普攻的上限，仅用于提前提示魅力判定。 */
+function estimatedBasicAttackDamage(attacker, target) {
+  var attackerForce = attacker.effective_force !== undefined ? attacker.effective_force : attacker.force;
+  var targetForce = target.effective_force !== undefined ? target.effective_force : target.force;
+  var attackerIntel = attacker.effective_intelligence !== undefined ? attacker.effective_intelligence : attacker.intelligence;
+  var targetIntel = target.effective_intelligence !== undefined ? target.effective_intelligence : target.intelligence;
+  var base = attackerForce > targetForce
+    ? attackerForce - targetForce
+    : Math.min(3, (attackerForce + attackerIntel) - (targetForce + targetIntel));
+  base = Math.max(1, base);
+  return attacker._braveryReady ? Math.floor(base * 1.5 + 0.5) : base;
+}
+
+function charismaMayTrigger(attacker, target) {
+  if (!target._charismaReady || target._fenceActive) return false;
+  var shield = (target.buffs || []).some(function(effect) {
+    return effect.type === "damage_shield" && (effect.value || 0) > 0;
+  });
+  return !shield && estimatedBasicAttackDamage(attacker, target) >= target.hp;
+}
 /**
  * 点击敌方武将 —— 在瞄准模式下执行普攻
  * 搜索逻辑：先搜敌方，避免双方同位置时选错
@@ -1088,8 +1271,10 @@ async function onBattleEnemyCell(r, c) {
   var tCell = document.querySelector((tIsP1 ? "#bside1-grid" : "#bside2-grid") +
     ' .bcell[data-row="' + r + '"][data-col="' + c + '"]');
 
-  // 攻速判定：弹窗选择奇偶
+  // 攻速、勇猛和魅力各自独立判定，不能复用同一次猜测。
   var guess = null;
+  var braveryGuess = null;
+  var charismaGuess = null;
   if (selectedAttacker.general._hasSpeedJudgment || selectedAttacker.general._hasSpeedRequired) {
     guess = await askOddEven();
     if (!guess) {
@@ -1097,12 +1282,26 @@ async function onBattleEnemyCell(r, c) {
       return renderBattle();
     }
   }
+  if (selectedAttacker.general._braveryReady) {
+    braveryGuess = await askOddEven(
+      "勇猛即将判定——" + selectedAttacker.general.name + "生命低于一半，猜中则本次普攻伤害×1.5"
+    );
+    if (!braveryGuess) { battlePhase = "action"; return renderBattle(); }
+  }
+  if (charismaMayTrigger(selectedAttacker.general, target)) {
+    charismaGuess = await askOddEven(
+      "魅力可能触发——本次攻击可能击杀" + target.name + "，请由被攻击方猜奇偶；成功将反噬攻击者"
+    );
+    if (!charismaGuess) { battlePhase = "action"; return renderBattle(); }
+  }
 
-  setStatus(guess ? "正在进行攻速判定……" : "正在发动普攻……");
+  setStatus((guess || braveryGuess || charismaGuess) ? "正在进行特性判定……" : "正在发动普攻……");
   var result = await call("/battle/attack", {
     attacker_id: selectedAttacker.general.id,
     target_id: target.id,
-    guess: guess
+    guess: guess,
+    bravery_guess: braveryGuess,
+    charisma_guess: charismaGuess
   });
   if (!result) {
     setStatus("普攻请求失败，请检查服务器连接");
@@ -1115,8 +1314,10 @@ async function onBattleEnemyCell(r, c) {
 
   var attackResult = result.attack_result;
   if (attackResult && attackResult.performed && aCell && tCell) {
+    var attackEvents = attackResult.events || [];
+    await playCombatEvents(attackEvents.filter(function(event) { return event.type === "bravery_judgment"; }));
     await animAttack(aCell, tCell, attackResult.damage || 0, attackResult.target_hp_after <= 0);
-    await playCombatEvents(attackResult.events || []);
+    await playCombatEvents(attackEvents.filter(function(event) { return event.type !== "bravery_judgment"; }));
   }
 
   clearBattleSelection();
@@ -1176,6 +1377,7 @@ async function useSkill() {
     body.area_col = castOptions.area.c;
     body.area_orientation = castOptions.area.orientation || undefined;
   }
+  if (castOptions.targetId !== undefined) body.target_id = castOptions.targetId;
   if (castOptions.skillRow !== undefined) body.skill_row = castOptions.skillRow;
   if (castOptions.mode) body.skill_mode = castOptions.mode;
   if (castOptions.timing) body.skill_timing = castOptions.timing;
@@ -1259,6 +1461,10 @@ async function playSkillResolution(skillResult, skillName, fallbackKind, skillId
     }
     return;
   }
+  if (skillId === "weakening_chain") {
+    var targetId = await selectEnemyGeneralForSkill("衰弱的连计：指定敌方武将");
+    return targetId === null ? null : { targetId:targetId };
+  }
   if (skillId === "meteor_rite") {
     for (var meteorIndex = 0; meteorIndex < details.length; meteorIndex++) {
       var meteorDetail = details[meteorIndex];
@@ -1301,32 +1507,107 @@ async function playSkillResolution(skillResult, skillName, fallbackKind, skillId
   await sleep(680);
 }
 
+async function revealAmbushGeneral(generalId, message) {
+  var cell = battleCellById(generalId);
+  var revealed = generalById(G, generalId);
+  if (!cell || !revealed || revealed._ambushConcealed) return cell;
+
+  if (cell.classList.contains("ambush-concealed")) {
+    var row = parseInt(cell.getAttribute("data-row"));
+    var col = parseInt(cell.getAttribute("data-col"));
+    var isAlly = cell.getAttribute("data-isally") === "1";
+    var gridRow = cell.style.gridRow || "auto";
+    var gridColumn = cell.style.gridColumn || "auto";
+    var holder = document.createElement("div");
+    holder.innerHTML = buildBcellHTML(revealed, row, col, gridRow, gridColumn, isAlly);
+    var replacement = holder.firstElementChild;
+    cell.replaceWith(replacement);
+    cell = replacement;
+  }
+  cell.classList.remove("ambush-hidden", "ambush-concealed", "locked");
+  cell.classList.add("ambush-revealing");
+  var center = getCellCenter(cell);
+  FX.debuffMiasma(center.x, center.y);
+  FX.burst(center.x, center.y, "#c5d9d1", 18, 3);
+  spawnSkillLabel(cell, message || "伏兵现身");
+  BattleAudio.play("success");
+  await sleep(620);
+  cell.classList.remove("ambush-revealing");
+  return cell;
+}
+
 async function playCombatEvents(events) {
   if (window.__stressMode || !events || !events.length) return;
   for (var i = 0; i < events.length; i++) {
     var event = events[i];
     var cell = document.querySelector('#scr-battle .bcell[data-id="' + event.general_id + '"]');
+    if (event.type === "ambush_reveal" || event.type === "ambush_counter") {
+      cell = await revealAmbushGeneral(
+        event.general_id, event.type === "ambush_counter" ? "伏兵现身" : "主动出击 · 破隐"
+      );
+    }
     if (!cell) continue;
     var center = getCellCenter(cell);
-    if (event.type === "fence_block") {
+    if (event.type === "ambush_reveal") {
+      spawnSkillLabel(cell, "破隐");
+    } else if (event.type === "fence_block") {
       cell.classList.add("fence-breaking"); spawnSkillLabel(cell, "破栅"); BattleAudio.play("block");
     } else if (event.type === "shield_absorb") {
       cell.classList.add("shield-impact"); spawnSkillLabel(cell, "护盾 -" + event.absorbed); BattleAudio.play("block");
     } else if (event.type === "recruit_heal") {
       cell.classList.add("recruit-trigger"); FX.healSparkles(center.x, center.y); spawnFloatNum(cell, -event.amount, "heal"); BattleAudio.play("heal");
     } else if (event.type === "bravery_judgment") {
-      cell.classList.add("bravery-trigger"); spawnSkillLabel(cell, event.bonus > 0 ? "勇猛 +" + event.bonus : "勇猛");
+      var braveryJudgment = Object.assign({}, event.judgment || {}, {
+        title: (event.target || "武将") + " · 勇猛判定",
+        actor_label: event.target || "该武将",
+        message: event.bonus > 0 ? "勇猛成功，本次普攻额外增加" + event.bonus + "点伤害" : "勇猛失败，本次普攻维持原伤害"
+      });
+      cell.classList.add("bravery-trigger", event.bonus > 0 ? "passive-success" : "passive-failure");
+      spawnSkillLabel(cell, event.bonus > 0 ? "勇猛爆发 +" + event.bonus : "勇猛未发");
+      BattleAudio.play(event.bonus > 0 ? "success" : "failure");
+      if (event.judgment) await showSpeedJudgment(braveryJudgment);
     } else if (event.type === "charisma_judgment") {
-      cell.classList.add("charisma-trigger"); spawnSkillLabel(cell, event.reflected > 0 ? "魅力反噬" : "魅力判定");
+      var charismaJudgment = Object.assign({}, event.judgment || {}, {
+        title: (event.target || "武将") + " · 魅力判定",
+        actor_label: event.target || "该武将",
+        message: event.reflected > 0 ? "魅力成功，向" + event.attacker + "反噬" + event.reflected + "点伤害" : "魅力失败，没有造成反噬伤害"
+      });
+      var reflectedCell = event.attacker_id ? battleCellById(event.attacker_id) : findBattleCellByName(event.attacker);
+      cell.classList.add("charisma-trigger", event.reflected > 0 ? "passive-success" : "passive-failure");
+      spawnSkillLabel(cell, event.reflected > 0 ? "魅力反噬" : "魅力未发");
+      if (event.judgment) await showSpeedJudgment(charismaJudgment);
+      if (event.reflected > 0 && reflectedCell) {
+        var reflectedCenter = getCellCenter(reflectedCell);
+        FX.debuffMiasma(reflectedCenter.x, reflectedCenter.y);
+        reflectedCell.classList.add("charisma-reflected-hit");
+        spawnFloatNum(reflectedCell, event.reflected, "damage");
+        BattleAudio.play("impact");
+      } else {
+        BattleAudio.play("failure");
+      }
     } else if (event.type === "chain_share") {
       cell.classList.add("chain-trigger"); FX.burst(center.x, center.y, "#b59b62", 14, 2.2); spawnSkillLabel(cell, "连计分伤");
     } else if (event.type === "revive") {
       cell.classList.add("revive-trigger"); FX.healSparkles(center.x, center.y); spawnSkillLabel(cell, "再起 · " + event.hp + " HP"); BattleAudio.play("success");
     } else if (event.type === "ambush_counter") {
-      cell.classList.add("ambush-trigger-fx"); FX.debuffMiasma(center.x, center.y); spawnSkillLabel(cell, "伏兵反击 -" + event.damage); BattleAudio.play("impact");
+      var ambushTarget = event.attacker_id ? battleCellById(event.attacker_id) : findBattleCellByName(event.attacker);
+      cell.classList.add("ambush-trigger-fx");
+      spawnSkillLabel(cell, "伏击出手");
+      await sleep(280);
+      if (ambushTarget) {
+        var targetCenter = getCellCenter(ambushTarget);
+        FX.lightningStrike(targetCenter.x, targetCenter.y);
+        ambushTarget.classList.add("ambush-counter-hit");
+        spawnFloatNum(ambushTarget, event.damage || 0, "damage");
+        spawnSkillLabel(ambushTarget, "伏兵反击");
+      }
+      BattleAudio.play("impact");
+      await sleep(360);
+      spawnSkillLabel(cell, "破隐");
     }
     await sleep(520);
-    cell.classList.remove("fence-breaking", "shield-impact", "recruit-trigger", "bravery-trigger", "charisma-trigger", "chain-trigger", "revive-trigger", "ambush-trigger-fx");
+    cell.classList.remove("fence-breaking", "shield-impact", "recruit-trigger", "bravery-trigger", "charisma-trigger", "chain-trigger", "revive-trigger", "ambush-trigger-fx", "passive-success", "passive-failure");
+    document.querySelectorAll(".charisma-reflected-hit, .ambush-counter-hit").forEach(function(hit) { hit.classList.remove("charisma-reflected-hit", "ambush-counter-hit"); });
   }
 }
 
@@ -1343,6 +1624,7 @@ async function playTurnEvents(events) {
 
 /** 跳过当前阶段/回合 */
 function skipPhase() {
+  if (isComputerTurn()) { setStatus("电脑正在行动，请等待"); return; }
   if (battlePhase === "target") {
     battlePhase = "action";
     return renderBattle();
@@ -1391,7 +1673,7 @@ function showSpeedJudgment(judgment) {
     overlay.innerHTML =
       '<div class="speed-judgment-panel">' +
       '<div class="speed-title">' + (judgment.title || "攻速判定") + '</div>' +
-      '<div class="speed-choice">你选择了 <strong>' + (judgment.guess === "odd" ? "奇" : "偶") + '</strong></div>' +
+      '<div class="speed-choice">' + (judgment.actor_label || "你") + '选择了 <strong>' + (judgment.guess === "odd" ? "奇" : "偶") + '</strong></div>' +
       '<div class="speed-die rolling">⚀</div>' +
       '<div class="speed-points">正在掷骰……</div>' +
       '<div class="speed-result"></div>' +
@@ -1593,6 +1875,46 @@ function selectRectAreaForSkill(config) {
   });
 }
 
+/** 选择一个明确的敌方武将作为单体技能的主目标。 */
+function selectEnemyGeneralForSkill(title) {
+  var enemyKey = currentTeamKey() === "p1" ? "p2" : "p1";
+  var enemies = aliveGenerals(enemyKey);
+  if (!enemies.length) return Promise.resolve(null);
+  if (window.__stressMode) return Promise.resolve(enemies[0].id);
+
+  return new Promise(function(resolve) {
+    var sourceGrid = document.querySelector(enemyKey === "p1" ? "#bside1-grid" : "#bside2-grid");
+    if (!sourceGrid) { resolve(null); return; }
+
+    var overlay = document.createElement("div");
+    overlay.className = "skill-area-overlay";
+    var panel = document.createElement("div");
+    panel.className = "skill-area-panel";
+    panel.innerHTML = "<h3>" + title + "</h3><p>点击一名敌方武将，将其指定为技能主目标</p>";
+
+    var gridClone = sourceGrid.cloneNode(true);
+    gridClone.removeAttribute("id");
+    gridClone.classList.add("skill-area-grid");
+    gridClone.querySelectorAll(".bcell[data-id]").forEach(function(cell) {
+      cell.classList.remove("selected", "locked", "acted");
+      cell.classList.add("cast-area-preview");
+      cell.removeAttribute("data-tooltip");
+      cell.addEventListener("click", function(e) {
+        e.stopPropagation();
+        var targetId = parseInt(cell.getAttribute("data-id"));
+        overlay.remove();
+        resolve(isNaN(targetId) ? null : targetId);
+      });
+    });
+
+    panel.appendChild(gridClone);
+    overlay.appendChild(panel);
+    overlay.addEventListener("click", function(e) {
+      if (e.target === overlay) { overlay.remove(); resolve(null); }
+    });
+    document.body.appendChild(overlay);
+  });
+}
 /** 根据每项技能的真实规则收集落点、方向、模式等施放参数。 */
 async function chooseSkillCastOptions(general) {
   var skillId = general.skill_id || "";

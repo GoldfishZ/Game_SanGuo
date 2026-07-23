@@ -159,7 +159,8 @@ class General:
         return events
         
     def take_damage(self, damage: int, attacker: 'General' = None,
-                    damage_source: str = "basic_attack") -> int:
+                    damage_source: str = "basic_attack",
+                    charisma_guess: str = None) -> int:
         """
         受到伤害
         
@@ -246,15 +247,18 @@ class General:
                 if revive_passive.trigger_on_death(self):
                     self.record_combat_event("revive", hp=self.current_hp)
             
-            # 触发魅力被动技能（反弹伤害）
-            if self.has_passive_skill("魅力") and attacker:
+            # 复活优先于魅力；只有最终仍然阵亡时才进行魅力判定。
+            if not self.is_alive and self.has_passive_skill("魅力") and attacker:
                 charisma_passive = self.get_passive_skill("魅力")
-                return_damage = charisma_passive.trigger_on_death(self, attacker, fatal_damage)
+                return_damage = charisma_passive.trigger_on_death(
+                    self, attacker, fatal_damage, guess=charisma_guess,
+                )
                 judgment = getattr(charisma_passive, "last_judgment", None)
                 self.record_combat_event(
                     "charisma_judgment", attacker=attacker.name,
+                    attacker_id=attacker.general_id,
                     judgment=dict(judgment) if judgment else None,
-                    reflected=return_damage,
+                    reflected=return_damage, fatal_damage=fatal_damage,
                 )
                 if return_damage > 0:
                     attacker.take_damage(return_damage, self, "passive")
@@ -334,13 +338,16 @@ class General:
 
         return max(1, damage)
     
-    def attack(self, target: 'General', guess: str = None) -> int:
+    def attack(self, target: 'General', guess: str = None,
+               bravery_guess: str = None, charisma_guess: str = None) -> int:
         """
         攻击目标武将（每回合每名武将只能调用一次）
 
         Args:
             target: 目标武将
-            guess: 攻速判定时的奇偶猜测 ("奇" / "偶")，None 则由系统随机
+            guess: 攻速判定时的奇偶猜测
+            bravery_guess: 勇猛判定的奇偶猜测
+            charisma_guess: 目标受到致命伤害时的魅力判定猜测
 
         Returns:
             实际造成的伤害
@@ -358,7 +365,9 @@ class General:
         # 攻速判定成功后获得的追加普攻不再触发第二次判定。
         if self._extra_attack_available:
             self._extra_attack_available = False
-            return self._perform_basic_attack_once(target)
+            return self._perform_basic_attack_once(
+                target, bravery_guess=bravery_guess, charisma_guess=charisma_guess,
+            )
 
         # 攻速限制判定（debuff：必须猜对才能普攻）
         if self.has_debuff_type("attack_speed_required"):
@@ -369,7 +378,9 @@ class General:
                 self._has_attacked_this_turn = True
                 return 0
 
-        actual_damage = self._perform_basic_attack_once(target)
+        actual_damage = self._perform_basic_attack_once(
+            target, bravery_guess=bravery_guess, charisma_guess=charisma_guess,
+        )
         self._has_attacked_this_turn = True
 
         # 攻速判定（buff：猜对则获得一次可自行选目标的追加普攻）。
@@ -382,7 +393,9 @@ class General:
 
         return actual_damage
 
-    def _perform_basic_attack_once(self, target: 'General') -> int:
+    def _perform_basic_attack_once(self, target: 'General', *,
+                                   bravery_guess: str = None,
+                                   charisma_guess: str = None) -> int:
         """执行一次基础普攻结算。"""
         damage = self.calculate_damage_to(target)
         
@@ -390,7 +403,10 @@ class General:
         if self.has_passive_skill("勇猛"):
             bravery_passive = self.get_passive_skill("勇猛")
             before_damage = damage
-            damage = bravery_passive.trigger_on_attack(self, target, damage)
+            bravery_passive.last_judgment = None
+            damage = bravery_passive.trigger_on_attack(
+                self, target, damage, guess=bravery_guess,
+            )
             judgment = getattr(bravery_passive, "last_judgment", None)
             if self.current_hp < self.max_hp / 2 and judgment:
                 self.record_combat_event(
@@ -404,7 +420,9 @@ class General:
                 self, target, damage
             )
         
-        actual_damage = target.take_damage(damage, self, "basic_attack")
+        actual_damage = target.take_damage(
+            damage, self, "basic_attack", charisma_guess=charisma_guess,
+        )
         if (
             actual_damage > 0
             and self.has_buff_type("knockback_on_damage")
@@ -729,6 +747,10 @@ class General:
             result = self.active_skill.execute(self, targets, battle_context)
         if result.get("success") and self.has_passive_skill("伏兵"):
             ambush_passive = self.get_passive_skill("伏兵")
+            if ambush_passive.is_hidden:
+                self.record_combat_event(
+                    "ambush_reveal", reason="skill", skill=self.active_skill.name,
+                )
             ambush_passive.reveal_after_skill_use()
         result["skill_name"] = self.active_skill.name
         result["caster"] = self.name

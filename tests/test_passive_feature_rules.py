@@ -139,6 +139,10 @@ def test_ambush_is_not_basic_attack_target_and_can_counter():
     assert ambush.get_passive_skill("伏兵").is_hidden is False
     assert team.get_general_position(target) == (0, 0)
     assert team.get_general_position(ambush) == (1, 0)
+    event = next(event for event in ambush.drain_combat_events() if event["type"] == "ambush_counter")
+    assert event["attacker_id"] == attacker.general_id
+    assert event["protected_id"] == target.general_id
+    assert event["damage"] == max(1, expected_damage // 2)
 
 
 if __name__ == "__main__":
@@ -149,3 +153,26 @@ if __name__ == "__main__":
     test_revive_once_at_half_hp()
     test_ambush_is_not_basic_attack_target_and_can_counter()
     print("被动特性规则测试通过")
+
+
+def test_ambush_active_skill_records_reveal_event():
+    ambush = make_general(
+        "伏兵", 7, 5, [Attribute.AMBUSH], active_skill=get_skill_by_id("fierce_attack"),
+    )
+    target = make_general("目标", 4, 4)
+    own_team = Team("伏兵队")
+    enemy_team = Team("目标队")
+    own_team.add_general(ambush)
+    enemy_team.add_general(target)
+    own_team.position_general(ambush, 1, 0)
+    enemy_team.position_general(target, 0, 0)
+
+    result = ambush.use_active_skill(
+        [target], BattleContext(own_team, enemy_team), own_team,
+    )
+
+    assert result["success"] is True
+    assert ambush.get_passive_skill("伏兵").is_hidden is False
+    reveal = next(event for event in ambush.drain_combat_events() if event["type"] == "ambush_reveal")
+    assert reveal["reason"] == "skill"
+    assert reveal["skill"] == ambush.active_skill.name

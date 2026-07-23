@@ -15,6 +15,7 @@ def evaluate(model, device, opponent, *, episodes=64, seed_base=20260800,
     tracker = GeneralStrengthTracker()
     wins = losses = draws = timeouts = 0
     turns, steps = [], []
+    size_groups = {}
     deadline = time.monotonic() + max_seconds
     reset_options = dict(reset_options or {})
 
@@ -37,6 +38,7 @@ def evaluate(model, device, opponent, *, episodes=64, seed_base=20260800,
                 damage[source_id] = damage.get(source_id, 0.0) + result.get("damage", 0.0)
             count += 1
         timed_out = not done
+        won = False
         if timed_out:
             timeouts += 1
             draws += 1
@@ -47,9 +49,15 @@ def evaluate(model, device, opponent, *, episodes=64, seed_base=20260800,
                 draws += 1
             elif winner == env.learning_team.team_name:
                 wins += 1
+                won = True
             else:
                 losses += 1
             tracker.record_episode(env.learning_team, env.enemy_team, winner, damage)
+        matchup = f"{len(env.learning_team.generals)}v{len(env.enemy_team.generals)}"
+        group = size_groups.setdefault(matchup, {"episodes": 0, "wins": 0, "timeouts": 0})
+        group["episodes"] += 1
+        group["wins"] += int(won)
+        group["timeouts"] += int(timed_out)
         turns.append(env.battle_system.turn_count)
         steps.append(count)
     completed = len(steps)
@@ -63,4 +71,12 @@ def evaluate(model, device, opponent, *, episodes=64, seed_base=20260800,
         "evaluated_episodes": completed,
         "general": tracker.snapshot(),
         "balance": tracker.balance_metrics(),
+        "roster_size_matrix": {
+            matchup: {
+                "episodes": group["episodes"],
+                "win_rate": group["wins"] / group["episodes"],
+                "timeout_rate": group["timeouts"] / group["episodes"],
+            }
+            for matchup, group in size_groups.items()
+        },
     }

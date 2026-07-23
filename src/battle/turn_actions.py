@@ -76,7 +76,10 @@ def resolve_skill_targets(
     if target_type == TargetType.ALL_ENEMIES:
         return enemy_team.get_alive_generals()
     if target_type == TargetType.AREA_ALLY:
-        return [options] if options else []
+        # 部分范围友军技能（如“人马大号令”）会根据施法者位置自动确定
+        # 生效竖列，不需要额外选择区域。以施法者作为非空占位目标，让共享
+        # 校验层能够继续结算；需要手选范围的技能仍优先收到 options。
+        return [options] if options else [caster]
     if target_type == TargetType.AREA_ENEMY:
         if caster.active_skill.skill_id == "meteor_rite":
             return [{"row": skill_row}] if skill_row in range(3) else []
@@ -167,6 +170,8 @@ def apply_attack_action(
     target: General,
     *,
     guess: Optional[str] = None,
+    bravery_guess: Optional[str] = None,
+    charisma_guess: Optional[str] = None,
 ) -> Dict[str, Any]:
     """验证并结算一次普攻（含攻速判定、反伤与阵亡）。"""
     if attacker not in battle_system.current_side.get_alive_generals():
@@ -177,10 +182,13 @@ def apply_attack_action(
     if target not in legal_targets:
         return {"success": False, "message": "目标不是合法普攻目标"}
 
+    attacker_hp_before = attacker.current_hp
     target_hp_before = target.current_hp
     required = attacker.has_debuff_type("attack_speed_required")
     attacker.last_attack_speed_judgment = None
-    damage = attacker.attack(target, guess)
+    damage = attacker.attack(
+        target, guess, bravery_guess=bravery_guess, charisma_guess=charisma_guess,
+    )
     judgment = getattr(attacker, "last_attack_speed_judgment", None)
     # 攻速限制判定失败时，attack 会消耗该状态并标记本回合已攻击。
     performed = not (required and judgment and not judgment.get("success"))
@@ -194,6 +202,8 @@ def apply_attack_action(
         "performed": performed,
         "attacker_id": attacker.general_id,
         "target_id": target.general_id,
+        "attacker_hp_before": attacker_hp_before,
+        "attacker_hp_after": attacker.current_hp,
         "target_hp_before": target_hp_before,
         "target_hp_after": target.current_hp,
         "speed_judgment": dict(judgment) if judgment else None,

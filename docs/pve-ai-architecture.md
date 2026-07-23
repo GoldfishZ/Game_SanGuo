@@ -1,6 +1,6 @@
 # 协同驱动的全流程 PvE AI 架构
 
-> 本文是未来 PvE AI、选将 AI 与布阵 AI 的训练设计参考。它描述目标架构、数据与验证方法；其中部分模块尚未实现。当前已实现的只有**战斗阶段 PPO 策略**，选将和布阵在本地 RL 环境中仍为随机，Web PvE 尚未接入。
+> 本文描述完整 PvE AI 的架构、训练数据与验证方法。当前已经实现 telemetry 训练的选将/布阵价值模型、PPO 战斗策略，以及 Web 人机模式；反事实评估与预战策略在线强化仍属于后续阶段。
 
 ## 1. 目标：完整 PvE AI 不等于单个战斗模型
 
@@ -21,8 +21,8 @@
 
 | 策略 | 输入 | 输出 | 当前状态 |
 |---|---|---|---|
-| `DraftPolicy` | 候选池、费用上限、已知敌方信息 | 一组合法武将 | 未实现 |
-| `FormationPolicy` | 双方阵容、技能、被动、可用阵位 | 每名武将的 `(row, col)` | 未实现 |
+| `DraftPolicy` | 候选池、费用上限、已知敌方信息 | 一组合法武将 | 已实现：枚举合法组合 + `V_draft` |
+| `FormationPolicy` | 双方阵容、可见阵型、可用阵位 | 每名武将的 `(row, col)` | 已实现：小阵容精确枚举、多阵容有界候选搜索 + `V_form` |
 | `BattlePolicy` | 当前战场 observation 与动作 mask | 技能/攻击/结束阶段动作 | 已实现：PPO Actor-Critic |
 
 不应将这三个决策强行塞进同一个端到端 MLP：
@@ -56,34 +56,18 @@ src/models/team.py
 
 ## 2. 当前实现与缺口
 
-当前 PPO 环境是：
+`SanguoEnv` 仍以随机合法选将和随机布阵产生 PPO rollout，因为 BattlePolicy 的训练目标只覆盖战斗阶段。部署路径已经拆分为：
 
 ```text
-src/rl/env.py::SanguoEnv
+src/rl/prebattle.py         V_draft / V_form、合法组合与阵型搜索
+src/rl/pve.py               Web 服务端推理桥
+src/web/server.py           PvP / PvE 流程编排
+src/battle/rules_service.py 唯一战斗规则入口
 ```
 
-它会在 `reset()` 时：
+人机模式中玩家固定为 P1。玩家完成选将后，服务器自动生成 P2 阵容；玩家完成布阵后，服务器自动生成 P2 阵型。进入电脑回合后，浏览器以约一秒的节奏调用 `/api/pve/step`，服务器每次只结算一个技能、普攻或阶段结束动作；前端使用真实结果播放技能特写、伤害和被动事件，最后一个动作才切回玩家。因此浏览器只负责节奏与表现，Web、训练 worker 仍不各自实现伤害或技能规则。
 
-1. 随机生成双方合法阵容；
-2. 随机布阵；
-3. 掷骰；
-4. 将学习方送入技能/攻击阶段；
-5. 用 PPO 决定战斗子动作。
-
-因此，现有 `BattlePolicy` 只适用于：
-
-```text
-双方已经选将、已经布阵之后的战斗。
-```
-
-未来实现 PvE 时，DraftPolicy 和 FormationPolicy 必须替代当前环境中的：
-
-```text
-SanguoEnv._choose_selection()  # 当前随机合法组合
-SanguoEnv._place_randomly()    # 当前随机阵位
-```
-
-Web 当前也没有 AI 分支：`src/web/server.py` 会依次处理 `select_p1` 和 `select_p2` 的人类选择。PvE bridge 应在后续阶段接入，且 AI 仍需通过 `turn_actions.py` 执行实际动作，保证 PvP、PvE 和训练环境规则一致。
+预战模型来自 `episodes.jsonl` 的时间切分监督学习：较早 update 用于训练，较晚 update 用于验证。当前模型只编码双方武将身份与 3×4 位置，属于可靠的第一版价值模型；技能结构、协同事件和反事实标签仍需继续增强。
 
 ---
 
@@ -350,13 +334,11 @@ V_form(roster, formation_self, formation_enemy/context) → P(win)
 敌方阵容与可见阵型
 ```
 
-每队通常为 3 名武将，合法有序 placement 数：
+三人阵容的合法有序 placement 数为 `12 × 11 × 10 = 1320`，可以直接精确枚举。
+开放多阵容后，5人以上的全排列会迅速失控，因此运行时使用固定种子的4096候选有界搜索，
+再由 `V_form` 评分。这样既保持可复现，也不会因低费多将阵容阻塞 Web 请求。
 
-```text
-12 × 11 × 10 = 1320
-```
-
-因此初期可以直接枚举所有合法布阵，用 `V_form` 选最大值：
+小阵容仍可直接枚举所有合法布阵，用 `V_form` 选最大值：
 
 ```python
 best_formation = max(legal_formations, key=value_model)
@@ -422,7 +404,7 @@ BattlePolicy：战斗阶段实时操作
 
 ### Stage 2：离线价值模型
 
-- 新增 `V_draft` / `V_form` 模型与训练工具；
+- [x] 新增 `V_draft` / `V_form` 模型与训练工具；
 - 用 earlier telemetry 训练，用 held-out seeds/checkpoints 验证；
 - 不接入 Web，不改变 PvP。
 
@@ -438,18 +420,18 @@ BattlePolicy：战斗阶段实时操作
 
 ### Stage 4：预战策略
 
-- 实现 `DraftPolicy`：候选池、费用约束、价值搜索；
-- 实现 `FormationPolicy`：合法 placement 枚举 + `V_form` argmax；
+- [x] 实现 `DraftPolicy`：候选池、费用约束、价值搜索；
+- [x] 实现 `FormationPolicy`：合法 placement 枚举 + `V_form` argmax；
 - 让 RL env 可选使用预战策略替代随机选将/布阵。
 
 **验证产物：** AI 选将/布阵在 held-out 对局中优于随机预战策略。
 
 ### Stage 5：Web PvE
 
-- Web server 增加人机模式；
-- AI 使用 DraftPolicy、FormationPolicy、PPO BattlePolicy；
-- 所有战斗操作走 `turn_actions.py`；
-- 模型加载失败时降级为可解释的安全 baseline。
+- [x] Web server 增加人机模式；
+- [x] AI 使用 DraftPolicy、FormationPolicy、PPO BattlePolicy；
+- [x] 所有战斗操作走 `BattleRulesService` / `turn_actions.py`；
+- [x] 模型加载失败时降级为可解释的安全 baseline。
 
 ### Stage 6：冻结历史策略池
 
@@ -475,7 +457,12 @@ BattlePolicy：战斗阶段实时操作
 | 阵型、前排、伏兵邻接、重排 | `src/models/team.py` |
 | 被动技能 | `src/game_data/passive_skills_config.py` |
 | 技能基类与伤害结果 | `src/skills/skill_base.py` |
-| 当前 Web 人类流程 | `src/web/server.py` |
+| Web PvP/PvE 流程 | `src/web/server.py` |
+| PvE 三阶段推理桥 | `src/rl/pve.py` |
+| 预战价值模型与搜索 | `src/rl/prebattle.py` |
+| 预战模型训练 | `tools/rl/train_prebattle.py` |
+| PvE 模型校验与发布 | `tools/rl/promote_pve_models.py` |
+| Git 跟踪的运行时模型 | `assets/models/pve/` |
 | 当前 PPO 策略适配器 | `src/rl/policy.py` |
 
 ## 11. 当前规则一致性提醒
@@ -484,5 +471,5 @@ BattlePolicy：战斗阶段实时操作
 
 1. `observation.py` 的离散注册表属于 schema；新增阵营、技能或效果时必须提升版本；
 2. 防栅的重建行为在 passive 实现、General 调用和已有文档之间需要确认最终规则；
-3. 当前 Web 使用双方独立候选池，RL env 使用共享洗牌 roster；未来 PvE DraftPolicy 必须遵循 Web 的真实候选池规则；
+3. Web PvE 的 DraftPolicy 使用双方独立候选池；RL env 仍使用共享洗牌 roster，训练或评估预战策略时必须显式处理这一区别；
 4. 当前 `practical_strength = win_rate - 0.5` 是单将实战统计，不能直接等同于阵容价值或协同价值。

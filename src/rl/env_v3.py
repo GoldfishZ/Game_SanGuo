@@ -8,10 +8,15 @@ from src.rl.reward_v3 import RewardHandler
 class SanguoEnv(BaseSanguoEnv):
     """规则与 observation 保持 v2 一致，仅升级奖励归因。"""
 
-    def __init__(self, opponent=None, *, team_size=3, cost_limit=8.0,
-                 max_turns=200, reward_config=None):
+    def __init__(self, opponent=None, *, team_size=3, min_team_size=1,
+                 max_team_size=8, team_size_power=0.0,
+                 roster_candidate_samples=256, roster_cost_bias=0.75,
+                 cost_limit=8.0, max_turns=200, reward_config=None):
         super().__init__(
-            opponent, team_size=team_size, cost_limit=cost_limit,
+            opponent, team_size=team_size, min_team_size=min_team_size,
+            max_team_size=max_team_size, team_size_power=team_size_power,
+            roster_candidate_samples=roster_candidate_samples,
+            roster_cost_bias=roster_cost_bias, cost_limit=cost_limit,
             max_turns=max_turns, reward_config=reward_config,
         )
         self.reward_handler = RewardHandler(reward_config)

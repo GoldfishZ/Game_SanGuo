@@ -1,0 +1,12 @@
+# 多阵容 PPO 结束或取得稳定 checkpoint 后，使用对应 episode 训练预战模型。
+episodes: artifacts/rl/multi_roster_v1/runs/multi-roster-v1/episodes.jsonl
+output: artifacts/rl/multi_roster_v1/prebattle_value.pt
+min_update: 200
+validation_update: 1601
+max_train: 300000
+max_validation: 80000
+epochs: 12
+batch_size: 1024
+learning_rate: 0.0005
+device: auto
+seed: 20260725

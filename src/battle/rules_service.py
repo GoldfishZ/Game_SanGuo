@@ -34,8 +34,12 @@ class BattleRulesService:
             self.battle_system, caster, targets, guess=guess,
         )
 
-    def attack(self, attacker, target, *, guess=None):
-        return apply_attack_action(self.battle_system, attacker, target, guess=guess)
+    def attack(self, attacker, target, *, guess=None, bravery_guess=None,
+               charisma_guess=None):
+        return apply_attack_action(
+            self.battle_system, attacker, target, guess=guess,
+            bravery_guess=bravery_guess, charisma_guess=charisma_guess,
+        )
 
     def end_turn(self):
         return advance_turn(self.battle_system)

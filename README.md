@@ -1,16 +1,17 @@
 # 三国武将卡牌游戏
 
-基于 Python 的三国主题武将卡牌对战游戏。两名玩家在同一个浏览器中轮流选将、布阵和战斗。
+基于 Python 的三国主题武将卡牌对战游戏，支持浏览器本地双人 PvP，以及由选将、布阵和 PPO 战斗模型共同驱动的单人 PvE。
 
 ## 快速开始
 
-Web 版无需安装第三方运行依赖：
+只运行本地双人 PvP 时无需第三方依赖。要使用仓库自带的 PvE 模型，先安装项目依赖（训练机器可按 CUDA 指南安装 PyTorch）：
 
 ```powershell
+pip install -r requirements.txt
 python main_web.py
 ```
 
-浏览器访问 `http://localhost:8089`。
+浏览器访问 `http://localhost:8089`，主菜单可选择 PvP 或 PvE。发布模型已随仓库保存在 `assets/models/pve/`，clone 后不需要复制本机 `artifacts/`。
 
 CLI/Pygame 入口仍可通过以下命令启动：
 
@@ -58,6 +59,7 @@ Game_SanGuo/
 │   ├── web/                 Web 服务、桌面启动器与静态前端
 │   └── paths.py             统一项目资源路径
 ├── assets/images/           武将卡和背景资源
+├── assets/models/pve/       Git 跟踪的 PvE 发布模型
 ├── docs/                    架构、流程、打包与 RL 训练文档
 ├── requirements/            分组构建依赖
 ├── tests/                   自动化测试
@@ -76,7 +78,7 @@ Game_SanGuo/
 - [`docs/rl-training.md`](docs/rl-training.md)：完整训练系统说明；
 - [`docs/rl-training-windows.md`](docs/rl-training-windows.md)：Windows/CUDA 启动手册。
 
-训练模型尚未接入网页 PvE。
+训练中间产物位于被忽略的 `artifacts/`；选定版本通过 `python tools/rl/promote_pve_models.py` 校验并发布到 `assets/models/pve/`，供 Web PvE 默认加载。
 
 ## 常用开发命令
 

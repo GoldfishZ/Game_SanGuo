@@ -20,9 +20,17 @@ class SanguoEnv:
     """控制一方的 masked-discrete 环境；另一方完整回合由 opponent 自动执行。"""
     action_size = actions.ACTION_SIZE
 
-    def __init__(self, opponent=None, *, team_size=3, cost_limit=8.0, max_turns=200, reward_config=None):
+    def __init__(self, opponent=None, *, team_size=3, min_team_size=1,
+                 max_team_size=8, team_size_power=0.0,
+                 roster_candidate_samples=256, roster_cost_bias=0.75,
+                 cost_limit=8.0, max_turns=200, reward_config=None):
         self.opponent = opponent or RandomOpponent()
-        self.team_size = team_size
+        self.team_size = int(team_size)
+        self.min_team_size = max(1, int(min_team_size))
+        self.max_team_size = min(12, max(self.min_team_size, int(max_team_size)))
+        self.team_size_power = float(team_size_power)
+        self.roster_candidate_samples = max(1, int(roster_candidate_samples))
+        self.roster_cost_bias = min(1.0, max(0.0, float(roster_cost_bias)))
         self.cost_limit = cost_limit
         self.max_turns = max_turns
         self.reward_handler = RewardHandler(reward_config)
@@ -81,8 +89,53 @@ class SanguoEnv:
         return self.observation(), self.info()
 
     def _choose_selection(self, source):
-        affordable = [combo for combo in combinations(source, self.team_size) if sum(item["cost"] for item in combo) <= self.cost_limit]
-        return self.rng.choice(affordable) if affordable else (min(source, key=lambda item: item["cost"]),)
+        """Sample a legal roster without imposing a hidden three-general cap.
+
+        ``team_size > 0`` keeps old checkpoints/configs reproducible. Setting it
+        to ``0`` enables variable-size sampling bounded only by cost, configured
+        size coverage and the twelve formation cells.
+        """
+        source = list(source)
+        cheapest = sorted(source, key=lambda item: float(item["cost"]))
+        if self.team_size > 0:
+            target_size = min(self.team_size, len(source))
+            affordable = [
+                combo for combo in combinations(source, target_size)
+                if sum(float(item["cost"]) for item in combo) <= self.cost_limit
+            ]
+            return self.rng.choice(affordable) if affordable else (cheapest[0],)
+        else:
+            feasible_sizes = [
+                size for size in range(self.min_team_size, min(self.max_team_size, len(source)) + 1)
+                if sum(float(item["cost"]) for item in cheapest[:size]) <= self.cost_limit
+            ]
+        if not feasible_sizes:
+            return (cheapest[0],)
+        if len(feasible_sizes) == 1:
+            target_size = feasible_sizes[0]
+        else:
+            weights = [float(size) ** self.team_size_power for size in feasible_sizes]
+            target_size = self.rng.choices(feasible_sizes, weights=weights, k=1)[0]
+
+        candidates = []
+        seen = set()
+
+        def add_candidate(selection):
+            selection = tuple(selection)
+            key = tuple(sorted(int(item["id"]) for item in selection))
+            if key not in seen and sum(float(item["cost"]) for item in selection) <= self.cost_limit:
+                seen.add(key)
+                candidates.append(selection)
+
+        add_candidate(cheapest[:target_size])
+        for _ in range(self.roster_candidate_samples):
+            add_candidate(self.rng.sample(source, target_size))
+        if not candidates:
+            return (cheapest[0],)
+        candidates.sort(key=lambda combo: sum(float(item["cost"]) for item in combo), reverse=True)
+        elite_fraction = max(0.02, 1.0 - self.roster_cost_bias)
+        elite_count = max(1, int(round(len(candidates) * elite_fraction)))
+        return self.rng.choice(candidates[:elite_count])
 
     def _populate_data(self, player, selection):
         for data in selection:

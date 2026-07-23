@@ -60,7 +60,7 @@ tests/                      # 测试文件
 |--------|------|------|
 | 🟡 | 数值未经过平衡测试 | 40 名武将的 force/intelligence/cost 需要通过对局与 RL 强度报告验证 |
 | 🟡 | GUI 战前阶段 | 选将/布阵目前仍用 CLI，GUI 只覆盖了战斗阶段 |
-| 🟢 | 网页 PvE | 本地 PPO 训练已实现，训练模型尚未接入 Web API 和前端 |
+| 🟢 | 网页 PvE | 已接入三阶段 AI；后续重点是固定种子强度评估与难度分层 |
 | 🟢 | 武将图片 | assets/images/generals/ 存放武将卡图资源；缺图时运行时使用 fallback 图；生成失败时创建空 PNG 供手动替换 |
 | 🟢 | Windows编码 | emoji/中文输出需 PYTHONIOENCODING=utf-8 |
 | 🟢 | 数值微调 | generals_data.py 纯数据文件可随时修改
@@ -109,7 +109,7 @@ src/web/static/
 - 训练系统完整说明：[`docs/rl-training.md`](docs/rl-training.md)
 - Windows/CUDA 启动指南：[`docs/rl-training-windows.md`](docs/rl-training-windows.md)
 - 全流程 PvE AI（选将、布阵、协同 telemetry 与价值模型）设计：[`docs/pve-ai-architecture.md`](docs/pve-ai-architecture.md)
-- 训练模型目前只用于本地环境、评估和武将平衡分析；网页 PvE 接入是后续工作。
+- Web PvE 已接入选将价值模型、布阵价值模型和 PPO 战斗策略。运行时默认模型位于 `assets/models/pve/`，该目录必须进入版本控制；训练日志与中间 checkpoint 仍放在被忽略的 `artifacts/`。使用 `python tools/rl/promote_pve_models.py` 校验并发布新模型。
 
 ## 工具脚本
 

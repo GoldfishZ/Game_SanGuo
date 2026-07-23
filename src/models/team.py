@@ -184,7 +184,8 @@ class Team:
             actual_counter = attacker.take_damage(counter_damage, general, "ambush_counter")
             general.record_combat_event(
                 "ambush_counter", attacker=attacker.name,
-                protected=target.name, damage=actual_counter,
+                attacker_id=attacker.general_id, protected=target.name,
+                protected_id=target.general_id, damage=actual_counter,
             )
             # 只触发一个伏兵的反击
             break

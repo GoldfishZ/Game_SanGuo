@@ -1,4 +1,5 @@
 import json
+from itertools import combinations
 from unittest.mock import patch
 
 import main_web
@@ -171,6 +172,67 @@ def test_web_serializes_frontend_skill_and_passive_state():
     assert dynamic["_frontOnlyAttack"] is True
     assert dynamic["_forcedTargetId"] == target.general_id
 
+
+def test_web_grand_cavalry_order_auto_targets_caster_column():
+    main_web.STATE.reset()
+    controller = main_web.STATE.controller
+    dong_zhuo = get_general_by_name("董卓")
+    ally = get_general_by_name("张辽")
+    enemy = get_general_by_name("张飞")
+    controller.player1.add_general_to_team(dong_zhuo)
+    controller.player1.add_general_to_team(ally)
+    controller.player2.add_general_to_team(enemy)
+    controller.player1.team.position_general(dong_zhuo, 1, 0)
+    controller.player1.team.position_general(ally, 1, 1)
+    controller.player2.team.position_general(enemy, 0, 0)
+    main_web.STATE.phase = "battle"
+    main_web.STATE.battle_system = main_web.BattleSystem(
+        controller.player1.team,
+        controller.player2.team,
+        callbacks=None,
+        first_player_team_name=controller.player1.team.team_name,
+    )
+    morale_before = controller.player1.team.current_morale
+
+    state = post("/api/battle/skill", {"general_id": dong_zhuo.general_id})
+
+    assert state["skill_result"]["success"] is True
+    assert state["skill_result"]["targets_affected"] == 2
+    assert state["p1"]["morale"] == morale_before - 7
+    assert dong_zhuo.get_effective_force() == 12
+    assert ally.get_effective_force() == 11
+
+def test_web_weakening_chain_respects_selected_enemy_target():
+    main_web.STATE.reset()
+    controller = main_web.STATE.controller
+    guo_huanghou = get_general_by_name("郭皇后")
+    first_enemy = get_general_by_name("张飞")
+    selected_enemy = get_general_by_name("甘宁")
+    controller.player1.add_general_to_team(guo_huanghou)
+    controller.player2.add_general_to_team(first_enemy)
+    controller.player2.add_general_to_team(selected_enemy)
+    controller.player1.team.position_general(guo_huanghou, 0, 0)
+    controller.player2.team.position_general(first_enemy, 0, 0)
+    controller.player2.team.position_general(selected_enemy, 1, 0)
+    main_web.STATE.phase = "battle"
+    main_web.STATE.battle_system = main_web.BattleSystem(
+        controller.player1.team,
+        controller.player2.team,
+        callbacks=None,
+        first_player_team_name=controller.player1.team.team_name,
+    )
+    first_force = first_enemy.get_effective_force()
+    selected_force = selected_enemy.get_effective_force()
+
+    state = post("/api/battle/skill", {
+        "general_id": guo_huanghou.general_id,
+        "target_id": selected_enemy.general_id,
+    })
+
+    assert state["skill_result"]["success"] is True
+    assert state["skill_result"]["details"][0]["target"] == selected_enemy.name
+    assert first_enemy.get_effective_force() == first_force
+    assert selected_enemy.get_effective_force() == selected_force - 3
 
 def test_web_thunder_strike_uses_caster_guess_once_and_triggers_on_success():
     """Web 实际路径必须把玩家猜测传入，并用一次成功判定触发整次雷击。"""
@@ -356,6 +418,46 @@ def test_web_failed_required_speed_judgment_cancels_attack():
     assert "掷出2点（偶），失败" in state["event"]
 
 
+def test_web_bravery_and_charisma_use_explicit_guesses_and_keep_defeated_card_position():
+    main_web.STATE.reset()
+    controller = main_web.STATE.controller
+    attacker = get_general_by_name("张飞")
+    target = get_general_by_name("蔡文姬")
+    controller.player1.add_general_to_team(attacker)
+    controller.player2.add_general_to_team(target)
+    controller.player1.team.position_general(attacker, 0, 0)
+    controller.player2.team.position_general(target, 0, 0)
+    attacker.take_damage(attacker.max_hp - 1)
+    target.take_damage(target.max_hp - 1)
+    main_web.STATE.phase = "battle"
+    main_web.STATE.battle_system = main_web.BattleSystem(
+        controller.player1.team,
+        controller.player2.team,
+        callbacks=None,
+        first_player_team_name=controller.player1.team.team_name,
+    )
+
+    with patch("src.game_data.passive_skills_config.random.choice", return_value="even"), \
+         patch("src.game_data.passive_skills_config.random.randint", side_effect=[3, 2]):
+        state = post("/api/battle/attack", {
+            "attacker_id": attacker.general_id,
+            "target_id": target.general_id,
+            "bravery_guess": "奇",
+            "charisma_guess": "偶",
+        })
+
+    events = state["attack_result"]["events"]
+    bravery = next(event for event in events if event["type"] == "bravery_judgment")
+    charisma = next(event for event in events if event["type"] == "charisma_judgment")
+    assert bravery["judgment"]["guess"] == "odd"
+    assert bravery["judgment"]["success"] is True
+    assert charisma["judgment"]["guess"] == "even"
+    assert charisma["judgment"]["success"] is True
+    assert charisma["attacker_id"] == attacker.general_id
+    assert state["p2"]["generals"][0]["alive"] is False
+    assert state["p2"]["generals"][0]["row"] == 0
+    assert state["p2"]["generals"][0]["col"] == 0
+
 def test_web_reset_clears_previous_battle_metadata():
     main_web.STATE.turn_count = 99
     main_web.STATE.winner = "旧胜者"
@@ -386,3 +488,114 @@ def test_web_dice_keeps_rerolling_until_not_tied():
     assert state["d1"] == 1
     assert state["d2"] == 6
     assert state["first"] == "玩家2"
+
+
+class FakePVEController:
+    available = True
+    load_errors = []
+
+    def choose_draft(self, pool, enemy_generals, cost_limit):
+        selected = []
+        for general in sorted(pool, key=lambda item: item.cost):
+            if sum(item.cost for item in selected) + general.cost <= cost_limit:
+                selected.append(general)
+        return selected
+
+    def choose_formation(self, generals, enemy_player):
+        return [
+            {"general_id": general.general_id, "row": index % 3, "col": index // 3}
+            for index, general in enumerate(generals)
+        ]
+
+    def step_battle_turn(self, state, ai_team, enemy_team, subphase="skill"):
+        if subphase == "skill":
+            return {
+                "kind": "end_skill", "success": True,
+                "next_subphase": "attack", "done": False,
+            }
+        turn_result = state.ensure_rules().end_turn()
+        state.turn_count = state.battle_system.turn_count
+        morale_event = turn_result["morale_event"]
+        morale_event["team"] = "p2"
+        state.last_event = f"电脑已完成行动，第{state.turn_count}回合轮到玩家1"
+        return {
+            "kind": "end_attack", "success": True,
+            "next_subphase": "skill", "done": False,
+            "turn_events": [morale_event],
+        }
+
+    def run_battle_turn(self, state, ai_team, enemy_team):
+        return []
+
+
+def test_web_pve_skips_ai_draft_and_formation_screens():
+    state = post("/api/new", {"mode": "pve"})
+    assert state["mode"] == "pve"
+    assert state["ai_team"] == "p2"
+    main_web.STATE.pve_controller = FakePVEController()
+
+    legal_pick = next(g for g in main_web.STATE.pool_p1 if g.cost <= state["cost_limit"])
+    selected = post("/api/select", {"general_ids": [legal_pick.general_id]})
+    assert selected["phase"] == "formation_p1"
+    assert selected["p2"]["generals"]
+
+    placed = post("/api/place", {
+        "positions": [{"general_id": legal_pick.general_id, "row": 0, "col": 0}],
+    })
+    assert placed["phase"] == "dice"
+    ai_positions = {
+        (general["row"], general["col"])
+        for general in placed["p2"]["generals"]
+    }
+    assert len(ai_positions) == len(placed["p2"]["generals"])
+
+
+def test_web_pve_exposes_computer_turn_one_action_at_a_time():
+    state = post("/api/new", {"mode": "pve"})
+    main_web.STATE.pve_controller = FakePVEController()
+    legal_pick = next(g for g in main_web.STATE.pool_p1 if g.cost <= state["cost_limit"])
+    post("/api/select", {"general_ids": [legal_pick.general_id]})
+    post("/api/place", {
+        "positions": [{"general_id": legal_pick.general_id, "row": 0, "col": 0}],
+    })
+
+    with patch("main_web.random.randint", side_effect=[1, 6]):
+        battle = post("/api/dice")
+
+    assert battle["current_team"] == "p2"
+    assert battle["ai_thinking"] is True
+    assert "ai_action" not in battle
+
+    skill_phase = post("/api/pve/step")
+    assert skill_phase["ai_action"]["kind"] == "end_skill"
+    assert skill_phase["current_team"] == "p2"
+
+    attack_phase = post("/api/pve/step")
+    assert attack_phase["ai_action"]["kind"] == "end_attack"
+    assert attack_phase["current_team"] == "p1"
+    assert attack_phase["ai_thinking"] is False
+
+
+def test_web_pve_conceals_enemy_ambush_identity_until_reveal():
+    post("/api/new", {"mode": "pve"})
+    ambush = get_general_by_name("张任")
+    ai = main_web.STATE.controller.player2
+    ai.add_general_to_team(ambush)
+    assert ai.team.position_general(ambush, 1, 2)
+    main_web.STATE.phase = "dice"
+
+    concealed = main_web.STATE.to_json()["p2"]["generals"][0]
+    assert concealed["id"] == ambush.general_id
+    assert concealed["name"] == "未知伏兵"
+    assert concealed["image"] == ""
+    assert concealed["attributes"] == []
+    assert concealed["skill"] == ""
+    assert concealed["_targetType"] == ""
+    assert concealed["skill_cost"] == 0
+    assert concealed["_ambushConcealed"] is True
+
+    ambush.get_passive_skill("伏兵").trigger_counter()
+    revealed = main_web.STATE.to_json()["p2"]["generals"][0]
+    assert revealed["name"] == "张任"
+    assert revealed["attributes"] == ["伏兵"]
+    assert revealed["_ambushConcealed"] is False

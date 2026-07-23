@@ -46,3 +46,33 @@ python tools/rl/train_ppo_v3.py `
 - `rollout/vs_heuristic_win_rate`、`rollout/vs_random_win_rate`；
 - `eval/heuristic/mirror_win_rate`；
 - timeout/draw/no-progress 和各类动作比例。
+
+
+## 长时多阵容训练
+
+多阵容配置使用费用规则生成双方独立阵容，覆盖对称和非对称人数对局：
+
+```powershell
+conda activate sanguo-rl
+python tools/rl/train_ppo_v3.py `
+  --config tools/rl/configs/ppo_selfplay_v3_multi_roster_long.yaml `
+  --run-name multi-roster-v1
+```
+
+关键配置：
+
+- `team_size: 0`：取消训练环境中的固定人数；
+- `min_team_size` / `max_team_size`：控制需要覆盖的人数范围，而非 PvE 规则上限；
+- `team_size_power`：正值提高大阵容的采样概率；
+- `roster_candidate_samples`：每次重置探索的候选阵容数；
+- `roster_cost_bias`：提高接近8费阵容的比例，同时保留低费多样性；
+- `max_updates: 0`、`max_wallclock_minutes: 0`：不设 update 和墙钟时间上限；
+- `num_workers` 与 `rollout_steps`：分别控制并行采样吞吐和每轮总样本量。
+
+长期训练不会自动停止。按 `Ctrl+C` 会保存 latest checkpoint；恢复时继续使用同一配置并传入 `--resume`。TensorBoard 中除原有指标外，还应检查 `rollout/roster_*` 和 `eval/roster_size/*`，避免总体胜率掩盖某些人数对局的退化。
+
+战斗策略稳定后，使用多阵容 episode 重新训练选将和布阵模型：
+
+```powershell
+python tools/rl/train_prebattle.py --config tools/rl/configs/prebattle_multi_roster.yaml
+```

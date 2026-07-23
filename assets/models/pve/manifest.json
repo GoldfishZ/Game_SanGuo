@@ -1,0 +1,43 @@
+{
+  "schema": "sanguo-pve-model-bundle-v1",
+  "promoted_at": "2026-07-23T04:58:53.678938+00:00",
+  "battle": {
+    "file": "battle_policy.pt",
+    "source": "artifacts\\rl\\round_v3\\checkpoints\\ppo_latest.pt",
+    "sha256": "bcb2df564749a6db9ffe1fe7cd20c22e228bf546351aa71c0e3a75e5d7f5da0f",
+    "bytes": 6219234,
+    "update": 600,
+    "observation_schema": "sanguo-battle-observation-v2",
+    "model_schema": "sanguo-structured-action-actor-critic-v3"
+  },
+  "prebattle": {
+    "file": "prebattle_value.pt",
+    "source": "artifacts\\rl\\pve\\prebattle_value.pt",
+    "sha256": "a7a46af3c69a9db5bef6d3a6d58b5879ba7d50e72409f64722ade7eadab29d2b",
+    "bytes": 1211698,
+    "schema": "sanguo-prebattle-value-v1",
+    "metadata": {
+      "episodes": "artifacts/rl/round_v3/runs/selfplay-v3-round-01/episodes.jsonl",
+      "min_update": 200,
+      "validation_update": 501,
+      "seed": 20260723,
+      "skipped_incomplete_formations": 39959,
+      "draft_metrics": {
+        "accuracy": 0.8173,
+        "brier": 0.12028910219669342,
+        "log_loss": 0.38878321647644043,
+        "auc": 0.901528314804506,
+        "train_samples": 140187,
+        "validation_samples": 40000
+      },
+      "formation_metrics": {
+        "accuracy": 0.8003554878435853,
+        "brier": 0.14126673340797424,
+        "log_loss": 0.4753909409046173,
+        "auc": 0.8769687609647231,
+        "train_samples": 110297,
+        "validation_samples": 31506
+      }
+    }
+  }
+}

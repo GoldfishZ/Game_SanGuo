@@ -6,7 +6,7 @@
 <title>三国武将卡牌游戏</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script>window.gsap = window.gsap || null; if(!window.gsap) console.warn('GSAP unavailable, using CSS fallback');</script>
-<link rel="stylesheet" href="/styles.css?v=16">
+<link rel="stylesheet" href="/styles.css?v=19">
 </head>
 <body>
 
@@ -17,8 +17,15 @@
     <div class="menu-title">三国武将卡牌游戏</div>
     <div class="menu-sub">霸·三国志大战 · 卡牌对战</div>
     <div class="menu-intro">运筹帷幄之中，决胜千里之外<br>挑选你的武将，排兵布阵，击败对手！</div>
-    <div style="text-align:center">
-      <div class="btn primary" onclick="startGame()" style="font-size:clamp(16px,2.4vw,24px);padding:clamp(12px,2vh,18px) clamp(32px,5vw,56px)">开 始 游 戏</div>
+    <div class="game-mode-picker" aria-label="选择游戏模式">
+      <button class="mode-card pve" type="button" onclick="startGame('pve')">
+        <span class="mode-kicker">单人挑战</span><strong>人机对战 · PvE</strong>
+        <small>与训练模型交锋，电脑自动选将、布阵与行动</small>
+      </button>
+      <button class="mode-card pvp" type="button" onclick="startGame('pvp')">
+        <span class="mode-kicker">本地双人</span><strong>双人对战 · PvP</strong>
+        <small>双方依次选将、布阵，在同一设备完成对局</small>
+      </button>
     </div>
     <div style="display:flex;gap:16px;justify-content:center;flex-wrap:wrap">
       <div class="btn" onclick="showScreen('rules')">规 则 介 绍</div>
@@ -160,57 +167,40 @@
   <div id="scr-rules" class="screen">
     <div class="bamboo">
       <h2>游 戏 规 则</h2>
-      <div class="rule"><h3>阵型</h3><p>战场为4横排×3竖列。玩家1最右列、玩家2最左列是前卫，前卫会保护身后的中坚与后卫。</p></div>
-      <div class="rule"><h3>伤害</h3><p>攻击方武力>目标武力: 伤害=武力差。攻击方武力<=目标武力: 伤害=min(3,(武力+智力)差)，最低1点。</p></div>
-      <div class="rule"><h3>士气</h3><p>初始12点，共用士气池。技能消耗士气。后手士气上限+2。</p></div>
-      <div class="rule"><h3>回合</h3><p>先手->后手交替。每回合: 1技能阶段->2普攻阶段。</p></div>
-      <div class="rule" style="display:flex;gap:12px;align-items:flex-start">
-        <div style="flex:1"><h3>防栅</h3><p>完全抵挡一次攻击后失效。被攻击时蓝色护盾守卫，抵挡后护盾碎裂消失。</p></div>
-        <div style="position:relative;width:90px;height:130px;border:2px solid rgba(80,180,255,.7);border-radius:6px;overflow:hidden;flex-shrink:0;animation:fencePulse 1.5s ease-in-out infinite">
-          <img src="/generals/wang_yi.png" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'" alt="王异">
-          <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:2px 4px;font-size:9px;text-align:center;color:#fff">王异 · 防栅</div>
+      <p class="rules-lead">以下说明以当前 Web 与训练环境共用的权威战斗规则为准。卡面上的圆形字章代表武将特性；战斗中出现的“待判”“已判”标签会提示特性状态。</p>
+
+      <section class="rules-section">
+        <h3>一、选将、布阵与胜负</h3>
+        <div class="rules-grid basics">
+          <article class="rule-card"><b>选将</b><p>双方分别从自己的候选池选将，所选武将费用合计不能超过 <strong>8</strong>。至少选择一名武将；不同稀有度和费用不直接改变规则，只影响武将本身数值与技能。</p></article>
+          <article class="rule-card"><b>阵型</b><p>权威阵型为 <strong>3层×4路</strong>：每一路由前卫、中坚、后卫依次保护。画面为了让双方相向而战，会显示成4排×3列；越靠近战场中央的卡越靠前。</p></article>
+          <article class="rule-card"><b>普攻目标</b><p>通常只能选择每一路最靠前且可被选中的敌人。前卫阵亡后，身后的武将才会暴露。伏兵、强制攻击和“只能攻击正前方”等状态会进一步改变合法目标。</p></article>
+          <article class="rule-card"><b>胜负与超时</b><p>一方所有武将最终阵亡即落败；复活成功的武将仍算存活。达到战斗回合上限仍未分胜负时，统一判定为平局。</p></article>
         </div>
-      </div>
-      <div class="rule" style="display:flex;gap:12px;align-items:flex-start">
-        <div style="flex:1"><h3>连计</h3><p>所有连计武将共享buff/debuff并分担伤害。金色锁链相连，一荣俱荣一损俱损。</p></div>
-        <div style="position:relative;width:90px;height:130px;border:2px solid #c09030;border-radius:6px;overflow:hidden;flex-shrink:0;box-shadow:0 0 12px rgba(200,160,50,.6)">
-          <img src="/generals/zhuge_liang.png" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'" alt="诸葛亮">
-          <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:2px 4px;font-size:9px;text-align:center;color:#fff">诸葛亮 · 连计</div>
+      </section>
+
+      <section class="rules-section">
+        <h3>二、回合、士气与伤害</h3>
+        <div class="rules-grid basics">
+          <article class="rule-card"><b>回合行动</b><p>掷骰决定先后手。轮到一方时，可让存活武将发动尚可用的主动技能和普通攻击；每名武将通常每回合至多使用一次技能、一次普攻，攻速判定成功时可获得一次追加普攻。</p></article>
+          <article class="rule-card"><b>独立士气池</b><p>双方各自拥有士气，并非共用。初始士气与上限均为12；后手获得补偿，上限和当前士气各增加2。主动技能按卡面标注消耗士气，结束己方行动时恢复2点，但不会超过上限。</p></article>
+          <article class="rule-card"><b>普攻伤害</b><p>若攻击方武力高于目标，伤害为双方武力差；否则比较双方“武力+智力”，差值最多按3点计算。最终基础普攻伤害最低为1，再依次经过勇猛、防栅、护盾、连计等规则修正。</p></article>
+          <article class="rule-card"><b>奇偶判定</b><p>需要判定时，玩家先押“奇”或“偶”，系统再掷一枚六面骰。骰点奇偶与选择一致即成功。攻速、勇猛和魅力是彼此独立的判定，不会共用同一次押注。</p></article>
         </div>
-      </div>
-      <div class="rule" style="display:flex;gap:12px;align-items:flex-start">
-        <div style="flex:1"><h3>勇猛</h3><p>低血量时普攻伤害x1.5。生命值降至一半以下时触发血红色战意特效。</p></div>
-        <div style="position:relative;width:90px;height:130px;border:2px solid #ff3020;border-radius:6px;overflow:hidden;flex-shrink:0;box-shadow:inset 0 0 20px rgba(255,50,30,.6)">
-          <img src="/generals/zhang_fei.png" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'" alt="张飞">
-          <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:2px 4px;font-size:9px;text-align:center;color:#fff">张飞 · 勇猛</div>
+      </section>
+
+      <section class="rules-section">
+        <h3>三、七项武将特性</h3>
+        <div class="trait-rules-grid">
+          <article class="trait-rule bravery"><header><i>勇</i><b>勇猛</b><span>低血反攻</span></header><p><strong>触发条件：</strong>发动普攻时，自身当前生命必须<strong>严格低于</strong>最大生命的一半，恰好一半不会触发。</p><p><strong>判定效果：</strong>攻击方猜奇偶；成功则本次普攻伤害×1.5并四舍五入，失败则保持原伤害。卡面会从“未蓄势”变为“待判”，结算后显示成功或失败。</p></article>
+          <article class="trait-rule charisma"><header><i>魅</i><b>魅力</b><span>绝命反噬</span></header><p><strong>触发条件：</strong>武将受到致命伤害，并且在复活等效果结算后仍然阵亡。没有伤害来源时不会反噬。</p><p><strong>判定效果：</strong>被攻击方猜奇偶；成功则对伤害来源造成“本次致命伤害的一半”，四舍五入。魅力可能反杀攻击者，失败则不造成伤害。</p></article>
+          <article class="trait-rule recruit"><header><i>募</i><b>募兵</b><span>持续恢复</span></header><p><strong>触发条件：</strong>该武将存活，且在己方新回合开始时生命未满。</p><p><strong>效果：</strong>自动回复1点生命，不超过生命上限。若已满血、已经阵亡，或尚未轮到己方新回合，则不会恢复。</p></article>
+          <article class="trait-rule fence"><header><i>栅</i><b>防栅</b><span>一次格挡</span></header><p><strong>触发条件：</strong>第一次受到普通攻击。技能伤害不会消耗防栅；拥有“无视防栅”效果的普攻可以绕过它。</p><p><strong>效果：</strong>将该次普攻伤害完全降为0并使防栅破碎。当前规则中，破碎后的防栅本局不会自动重建。</p></article>
+          <article class="trait-rule chain"><header><i>连</i><b>连计</b><span>同荣共损</span></header><p><strong>共享状态：</strong>己方多名存活的连计武将会同步所持增益和减益；其中一人获得或失去相关状态时，连计体系会重新同步。</p><p><strong>分担伤害：</strong>连计武将受伤时，伤害按存活连计人数整除，并让每名连计武将承受分担后的数值。阵亡者不再参与后续共享。</p></article>
+          <article class="trait-rule revive"><header><i>生</i><b>复活</b><span>每局一次</span></header><p><strong>触发条件：</strong>武将首次因伤害降至0生命。</p><p><strong>效果：</strong>立即恢复为最大生命的一半（向下取整）并继续留在战场，每局仅能成功一次。因为武将没有最终阵亡，同一次伤害不会再触发魅力。</p></article>
+          <article class="trait-rule ambush"><header><i>伏</i><b>伏兵</b><span>隐匿反击</span></header><p><strong>隐藏：</strong>隐藏期间不能被敌方普通攻击直接选中；使用自己的主动技能、完成伏击反击，或队友全部阵亡后会破隐。</p><p><strong>反击：</strong>相邻8格内的友军遭到普攻时，一名尚未触发的隐藏伏兵会对攻击者造成原伤害一半、最低1点的反击伤害。每名伏兵每局只能反击一次，且不会交换阵位。</p></article>
         </div>
-      </div>
-      <div class="rule" style="display:flex;gap:12px;align-items:flex-start">
-        <div style="flex:1"><h3>魅力</h3><p>被击杀时反弹致死伤害的一半给攻击者。死亡时紫色魅影反噬仇敌。</p></div>
-        <div style="position:relative;width:90px;height:130px;border:2px solid rgba(220,100,220,.6);border-radius:6px;overflow:hidden;flex-shrink:0;box-shadow:0 0 12px rgba(220,100,220,.6)">
-          <img src="/generals/cai_wenji.png" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'" alt="蔡文姬">
-          <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:2px 4px;font-size:9px;text-align:center;color:#fff">蔡文姬 · 魅力</div>
-        </div>
-      </div>
-      <div class="rule" style="display:flex;gap:12px;align-items:flex-start">
-        <div style="flex:1"><h3>募兵/复活/伏兵</h3><p>募兵: 受伤后每回合回复1点。复活: 死亡时50%HP复活一次。伏兵: 使用技能前不可被选中。</p></div>
-        <div style="display:flex;gap:6px;flex-shrink:0">
-          <div style="position:relative;width:65px;height:95px;border:2px solid #40c050;border-radius:5px;overflow:hidden;box-shadow:0 0 10px rgba(60,220,80,.5)">
-            <img src="/generals/xu_chu.png" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'" alt="许褚">
-            <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:1px 3px;font-size:7px;text-align:center;color:#fff">许褚·募兵</div>
-          </div>
-          <div style="position:relative;width:65px;height:95px;border:2px solid #d4a030;border-radius:5px;overflow:hidden;box-shadow:0 0 14px rgba(255,210,70,.6)">
-            <img src="/generals/dailai_dongzhu.png" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'" alt="带来洞主">
-            <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:1px 3px;font-size:7px;text-align:center;color:#fff">带来洞主·复活</div>
-          </div>
-          <div style="position:relative;width:65px;height:95px;border:2px solid rgba(100,100,100,.5);border-radius:5px;overflow:hidden;opacity:.45;filter:brightness(.4)">
-            <img src="/generals/zhang_ren.png" style="width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'" alt="张任">
-            <div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.7);padding:1px 3px;font-size:7px;text-align:center;color:#fff">张任·伏兵</div>
-          </div>
-        </div>
-      </div>
-      <div class="rule"><h3>胜利</h3><p>一方全体武将阵亡则游戏结束。</p></div>
-    </div>
+      </section>    </div>
     <div style="text-align:center;margin-top:12px"><div class="btn" onclick="showScreen('menu')">返回主菜单</div></div>
   </div>
 
@@ -251,7 +241,7 @@
 
 <script src="/tooltips.js?v=12"></script>
 <script src="/tutorial.js?v=13"></script>
-<script src="/game.js?v=22"></script>
+<script src="/game.js?v=28"></script>
 <script src="/frontend_stress.js?v=3"></script>
 <script>
 // 出征计数

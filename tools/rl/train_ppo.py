@@ -71,6 +71,19 @@ def rollout_metrics_from_fragments(fragments, tracker=None):
         for summary in summaries:
             tracker.record_episode_from_summary(summary)
     denominator = max(1, episodes)
+    size_metrics = {
+        "mean_learning_roster_size": sum(len(item.roster_self) for item in summaries) / denominator,
+        "mean_enemy_roster_size": sum(len(item.roster_enemy) for item in summaries) / denominator,
+    }
+    size_groups = {}
+    for summary in summaries:
+        matchup = f"{len(summary.roster_self)}v{len(summary.roster_enemy)}"
+        group = size_groups.setdefault(matchup, {"episodes": 0, "wins": 0})
+        group["episodes"] += 1
+        group["wins"] += int(summary.outcome == "win")
+    for matchup, group in size_groups.items():
+        size_metrics[f"roster_{matchup}_episodes"] = group["episodes"]
+        size_metrics[f"roster_{matchup}_win_rate"] = group["wins"] / group["episodes"]
     current = [summary for summary in summaries if summary.opponent_id == "current"]
     historical = [summary for summary in summaries if summary.opponent_id.startswith("history-")]
     return {
@@ -89,6 +102,7 @@ def rollout_metrics_from_fragments(fragments, tracker=None):
         "vs_current_win_rate": sum(item.outcome == "win" for item in current) / max(1, len(current)),
         "vs_history_win_rate": sum(item.outcome == "win" for item in historical) / max(1, len(historical)),
         **{f"action_{kind}_ratio": count / max(1, total_steps) for kind, count in action_counts.items()},
+        **size_metrics,
     }
 
 
@@ -236,7 +250,15 @@ def main():
     parser.add_argument("--clip-ratio", type=float, default=0.2)
     parser.add_argument("--value-coef", type=float, default=0.5)
     parser.add_argument("--grad-clip", type=float, default=0.5)
-    parser.add_argument("--team-size", type=int, default=3)
+    parser.add_argument("--team-size", type=int, default=3,
+                        help="固定阵容人数；0 表示按费用规则启用多阵容采样")
+    parser.add_argument("--min-team-size", type=int, default=1)
+    parser.add_argument("--max-team-size", type=int, default=8)
+    parser.add_argument("--team-size-power", type=float, default=0.0,
+                        help="多阵容采样权重 size**power；正值提高大阵容频率")
+    parser.add_argument("--roster-candidate-samples", type=int, default=256)
+    parser.add_argument("--roster-cost-bias", type=float, default=0.75,
+                        help="0=全候选均匀，1=优先接近费用上限")
     parser.add_argument("--cost-limit", type=float, default=8.0)
     parser.add_argument("--max-turns", type=int, default=200)
     parser.add_argument("--reward-hp-delta", type=float, default=0.05)
@@ -264,6 +286,14 @@ def main():
         parser.error("selfplay_current_ratio 必须在 0 到 1 之间")
     if args.eval_every <= 0 or args.checkpoint_every <= 0:
         parser.error("eval_every 和 checkpoint_every 必须为正整数")
+    if args.team_size < 0:
+        parser.error("team_size 不能为负数；使用 0 启用多阵容采样")
+    if not 1 <= args.min_team_size <= args.max_team_size <= 12:
+        parser.error("多阵容人数范围必须满足 1 <= min_team_size <= max_team_size <= 12")
+    if args.roster_candidate_samples <= 0:
+        parser.error("roster_candidate_samples 必须为正整数")
+    if not 0.0 <= args.roster_cost_bias <= 1.0:
+        parser.error("roster_cost_bias 必须在 0 到 1 之间")
     import torch
 
     profile = detect_runtime(args.device, args.num_workers, args.rollout_steps, args.minibatch_size)
@@ -301,7 +331,13 @@ def main():
         "win": args.reward_win, "lose": args.reward_lose, "draw": args.reward_draw,
     }
     env_config = {
-        "team_size": args.team_size, "cost_limit": args.cost_limit,
+        "team_size": args.team_size,
+        "min_team_size": args.min_team_size,
+        "max_team_size": args.max_team_size,
+        "team_size_power": args.team_size_power,
+        "roster_candidate_samples": args.roster_candidate_samples,
+        "roster_cost_bias": args.roster_cost_bias,
+        "cost_limit": args.cost_limit,
         "max_turns": args.max_turns, "reward_config": reward_config,
     }
     env = SanguoEnv(make_opponent(args.stage), **env_config)
@@ -378,6 +414,8 @@ def main():
                 )
                 logger.log(update, {key: value for key, value in validation.items() if isinstance(value, (int, float))}, "eval/heuristic")
                 logger.log(update, validation["balance"], "eval_balance")
+                for matchup, size_metrics in validation.get("roster_size_matrix", {}).items():
+                    logger.log(update, size_metrics, f"eval/roster_size/{matchup}")
                 is_best, quality_score = convergence.update(
                     validation["win_rate"], validation["timeout_rate"],
                 )

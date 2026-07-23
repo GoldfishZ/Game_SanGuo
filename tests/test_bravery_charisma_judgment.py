@@ -84,6 +84,45 @@ def test_charisma_does_not_reflect_when_judgment_fails():
     assert victim.get_passive_skill("魅力").last_judgment["success"] is False
 
 
+def test_explicit_bravery_guess_overrides_automatic_guess():
+    attacker = make_general("勇猛武将", 6, 6, [Attribute.BRAVERY])
+    target = make_general("目标", 3, 1)
+    attacker.take_damage(7)
+
+    with patch("src.game_data.passive_skills_config.random.choice", return_value="even"), \
+         patch("src.game_data.passive_skills_config.random.randint", return_value=3):
+        damage = attacker.attack(target, bravery_guess="奇")
+
+    assert damage == 5
+    assert attacker.get_passive_skill("勇猛").last_judgment["guess"] == "odd"
+    assert attacker.get_passive_skill("勇猛").last_judgment["success"] is True
+
+
+def test_explicit_charisma_guess_overrides_automatic_guess():
+    victim = make_general("魅力武将", 3, 3, [Attribute.CHARISMA])
+    attacker = make_general("攻击者", 5, 5)
+    victim.take_damage(1)
+
+    with patch("src.game_data.passive_skills_config.random.choice", return_value="odd"), \
+         patch("src.game_data.passive_skills_config.random.randint", return_value=2):
+        victim.take_damage(5, attacker, charisma_guess="偶")
+
+    assert victim.get_passive_skill("魅力").last_judgment["guess"] == "even"
+    assert victim.get_passive_skill("魅力").last_judgment["success"] is True
+    assert attacker.current_hp == 7
+
+
+def test_revive_prevents_charisma_from_triggering_on_the_same_fatal_hit():
+    victim = make_general("复活魅力武将", 4, 4, [Attribute.REVIVE, Attribute.CHARISMA])
+    attacker = make_general("攻击者", 8, 4)
+
+    victim.take_damage(victim.current_hp, attacker, charisma_guess="奇")
+
+    assert victim.is_alive is True
+    assert victim.current_hp == victim.max_hp // 2
+    assert victim.get_passive_skill("魅力").last_judgment is None
+    assert attacker.current_hp == attacker.max_hp
+
 if __name__ == "__main__":
     test_bravery_success_below_half_hp()
     test_bravery_does_not_trigger_at_exactly_half_hp()

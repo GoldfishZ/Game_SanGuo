@@ -16,6 +16,7 @@ from src.models.general import General
 from src.models.team import Team
 from src.battle.battle_system import BattleSystem
 from src.battle.rules_service import BattleRulesService
+from src.rl.pve import PVEController
 from src.game_data.generals_data import GENERALS_DATA
 from src.game_data.generals_bios import GENERALS_BIOGRAPHY
 from src.game_data.skills_config import ALL_SKILLS
@@ -77,6 +78,14 @@ class GameState:
         self.dice_p1 = 0   # 玩家1骰子值
         self.dice_p2 = 0   # 玩家2骰子值
         self.compensation = ""  # 后手补偿说明
+        self.mode = "pvp"
+        self.pve_controller = None
+        self.last_ai_actions = []
+        self.ai_subphase = "skill"
+        self.ai_action_count = 0
+        self.ai_step_lock = threading.Lock()
+        # 仅供 Web 展示阵亡卡；不会写回权威阵型或参与目标判定。
+        self.display_positions = {}
 
     def _make_pool(self, chosen_data):
         """Generate one player's draft pool from already selected raw general data."""
@@ -98,18 +107,88 @@ class GameState:
         second = shuffled[pool_size:pool_size * 2]
         return self._make_pool(first), self._make_pool(second)
 
-    def reset(self):
+    def reset(self, mode="pvp"):
+        self.mode = mode if mode in ("pvp", "pve") else "pvp"
         self.controller = GameFlowController()
+        if self.mode == "pve":
+            self.controller.player2.name = "电脑"
         self.pool_p1, self.pool_p2 = self._make_distinct_pools()
         self.phase = "select_p1"
         self.battle_system = None
         self.rules = None
-        self.last_event = "游戏已初始化"
+        self.last_ai_actions = []
+        self.ai_subphase = "skill"
+        self.ai_action_count = 0
+        self.last_event = "人机对战已初始化" if self.mode == "pve" else "双人对战已初始化"
         self.turn_count = 0
         self.winner = ""
         self.dice_p1 = 0
         self.dice_p2 = 0
         self.compensation = ""
+        self.display_positions = {}
+
+    def ensure_pve_controller(self):
+        if self.pve_controller is None:
+            self.pve_controller = PVEController(device="cpu")
+        return self.pve_controller
+
+    def auto_ai_draft(self):
+        ai = self.controller.player2
+        choices = self.ensure_pve_controller().choose_draft(
+            self.pool_p2, self.controller.player1.selected_generals,
+            self.cost_limit,
+        )
+        if not choices:
+            raise RuntimeError("电脑未找到合法选将组合")
+        for general in choices:
+            ai.add_general_to_team(general)
+            if hasattr(general, "pool_index"):
+                delattr(general, "pool_index")
+
+    def auto_ai_formation(self):
+        ai = self.controller.player2
+        positions = self.ensure_pve_controller().choose_formation(
+            ai.selected_generals, self.controller.player1,
+        )
+        if len(positions) != len(ai.selected_generals):
+            raise RuntimeError("电脑未生成完整布阵")
+        for position in positions:
+            general = next(
+                general for general in ai.selected_generals
+                if general.general_id == int(position["general_id"])
+            )
+            if not ai.team.position_general(
+                general, int(position["row"]), int(position["col"]),
+            ):
+                raise RuntimeError("电脑生成了冲突阵位")
+        ai.team.complete_formation_setup()
+
+    def is_ai_turn(self):
+        return bool(
+            self.mode == "pve" and self.phase == "battle" and self.battle_system
+            and self.battle_system.current_side is self.controller.player2.team
+        )
+
+    def begin_ai_turn(self):
+        if self.is_ai_turn():
+            self.ai_subphase = "skill"
+            self.ai_action_count = 0
+            self.last_ai_actions = []
+
+    def step_ai_action(self):
+        with self.ai_step_lock:
+            if not self.is_ai_turn():
+                return {"kind": "idle", "success": False, "done": self.phase == "over"}
+            if self.ai_action_count >= 64:
+                raise RuntimeError("电脑单回合动作超过安全上限")
+            trace = self.ensure_pve_controller().step_battle_turn(
+                self, self.controller.player2.team, self.controller.player1.team,
+                self.ai_subphase,
+            )
+            self.ai_action_count += 1
+            self.ai_subphase = trace.get("next_subphase", self.ai_subphase)
+            self.last_ai_actions.append(trace)
+            return trace
 
     def finish_battle(self):
         """结束 Web 战斗，并把引擎队名统一转换为前端玩家名。"""
@@ -181,7 +260,14 @@ class GameState:
             return json.dumps({"phase": "menu"})
         result = {"phase": self.phase, "event": self.last_event,
                   "turn": self.turn_count, "winner": self.winner,
-                  "cost_limit": self.cost_limit}
+                  "cost_limit": self.cost_limit, "mode": self.mode,
+                  "human_team": "p1", "ai_team": "p2" if self.mode == "pve" else None}
+        if self.mode == "pve":
+            ai = self.ensure_pve_controller()
+            result["ai_ready"] = ai.available
+            result["ai_errors"] = list(ai.load_errors)
+            result["ai_actions"] = list(self.last_ai_actions)
+            result["ai_thinking"] = self.is_ai_turn()
         if self.dice_p1 or self.dice_p2:
             result["d1"] = self.dice_p1
             result["d2"] = self.dice_p2
@@ -221,8 +307,12 @@ class GameState:
         gens = []
         for g in p.selected_generals:
             pos = p.team.get_general_position(g)
+            if pos is not None:
+                self.display_positions[g.general_id] = pos
+            elif not g.is_alive:
+                pos = self.display_positions.get(g.general_id)
             forced_target = g.get_forced_attack_target()
-            gens.append({
+            general_json = {
                 "name": g.name, "id": g.general_id,
                 "hp": g.current_hp, "maxHp": g.max_hp,
                 "force": g.force, "intelligence": g.intelligence,
@@ -249,11 +339,47 @@ class GameState:
                 "_hasUsedSkill": g._has_used_skill_this_turn,
                 "_hasSpeedJudgment": g.has_buff_type("attack_speed_judgment"),
                 "_hasSpeedRequired": g.has_debuff_type("attack_speed_required"),
+                "_braveryReady": bool(
+                    g.is_alive and g.has_passive_skill("勇猛")
+                    and g.current_hp < g.max_hp / 2
+                ),
+                "_braveryJudgment": (
+                    dict(g.get_passive_skill("勇猛").last_judgment)
+                    if g.has_passive_skill("勇猛")
+                    and g.get_passive_skill("勇猛").last_judgment else None
+                ),
+                "_charismaReady": bool(g.is_alive and g.has_passive_skill("魅力")),
+                "_charismaJudgment": (
+                    dict(g.get_passive_skill("魅力").last_judgment)
+                    if g.has_passive_skill("魅力")
+                    and g.get_passive_skill("魅力").last_judgment else None
+                ),
                 "_frontOnlyAttack": g.has_buff_type("front_only_attack"),
                 "_forcedTargetId": forced_target.general_id if forced_target else None,
                 "_targetType": g.active_skill.target_type.name if (g.active_skill and hasattr(g.active_skill, 'target_type')) else "",
                 "skill_cost": g.active_skill.morale_cost if g.active_skill else 0,
-            })
+            }
+            ambush = g.get_passive_skill("伏兵") if g.has_passive_skill("伏兵") else None
+            concealed = bool(
+                self.mode == "pve" and p is self.controller.player2
+                and g.is_alive and ambush and ambush.is_hidden
+            )
+            if concealed:
+                # Keep only board occupancy and rule-state fields. Identity, art,
+                # stats, traits and skill data stay server-side until reveal.
+                general_json.update({
+                    "name": "未知伏兵", "hp": 0, "maxHp": 0,
+                    "force": 0, "intelligence": 0, "cost": 0,
+                    "camp": "", "rarity": "",
+                    "effective_force": 0, "effective_intelligence": 0,
+                    "skill": "", "skill_id": "", "skill_desc": "",
+                    "_targetType": "", "skill_cost": 0,
+                    "image": "", "attributes": [], "buffs": [], "debuffs": [],
+                    "_ambushConcealed": True,
+                })
+            else:
+                general_json["_ambushConcealed"] = False
+            gens.append(general_json)
         return {
             "name": p.name,
             "morale": p.team.current_morale,
@@ -272,7 +398,7 @@ def handle_api(path, body, handler):
 
     # POST /api/new → 开始新游戏
     if path == "/api/new":
-        STATE.reset()
+        STATE.reset(body.get("mode", "pvp"))
         return STATE.to_json()
 
     # POST /api/select → {"general_ids": [1,2,...]}
@@ -301,8 +427,17 @@ def handle_api(path, body, handler):
             target_player.add_general_to_team(g)
             delattr(g, "pool_index")
         if STATE.phase == "select_p1":
-            STATE.phase = "select_p2"
-            STATE.last_event = "玩家1已选择，轮到玩家2"
+            if STATE.mode == "pve":
+                try:
+                    STATE.auto_ai_draft()
+                except Exception as exc:
+                    STATE.last_event = f"电脑选将失败：{exc}"
+                    return STATE.to_json()
+                STATE.phase = "formation_p1"
+                STATE.last_event = "电脑已完成选将，请为玩家1布阵"
+            else:
+                STATE.phase = "select_p2"
+                STATE.last_event = "玩家1已选择，轮到玩家2"
         else:
             STATE.phase = "formation_p1"
             STATE.last_event = "选将完成，进入布阵"
@@ -344,9 +479,19 @@ def handle_api(path, body, handler):
                 STATE.last_event = "阵位冲突，布阵未完成"
                 return STATE.to_json()
 
+        target_player.team.complete_formation_setup()
         if STATE.phase == "formation_p1":
-            STATE.phase = "formation_p2"
-            STATE.last_event = "玩家1布阵完成，轮到玩家2布阵"
+            if STATE.mode == "pve":
+                try:
+                    STATE.auto_ai_formation()
+                except Exception as exc:
+                    STATE.last_event = f"电脑布阵失败：{exc}"
+                    return STATE.to_json()
+                STATE.phase = "dice"
+                STATE.last_event = "双方布阵完成，准备掷骰"
+            else:
+                STATE.phase = "formation_p2"
+                STATE.last_event = "玩家1布阵完成，轮到玩家2布阵"
         else:
             STATE.phase = "dice"
             STATE.last_event = "布阵完成，准备掷骰"
@@ -386,11 +531,34 @@ def handle_api(path, body, handler):
         STATE.turn_count = 1
         STATE.battle_system.current_side.update_effects()
         STATE.clear_combat_events()
+        STATE.begin_ai_turn()
         return STATE.to_json()
+
+    # POST /api/pve/step -> execute exactly one visible computer sub-action.
+    if path == "/api/pve/step":
+        if c is None or STATE.mode != "pve" or STATE.phase != "battle":
+            STATE.last_event = "当前没有可执行的电脑回合"
+            return STATE.to_json()
+        if not STATE.is_ai_turn():
+            STATE.last_event = "当前轮到玩家行动"
+            return STATE.to_json()
+        try:
+            trace = STATE.step_ai_action()
+        except Exception as exc:
+            STATE.last_event = f"电脑行动失败：{exc}"
+            response = STATE.to_json()
+            response["ai_error"] = str(exc)
+            return response
+        response = STATE.to_json()
+        response["ai_action"] = trace
+        return response
 
     # POST /api/battle/next or /api/battle/skip -> end current player's turn
     if path in ("/api/battle/next", "/api/battle/skip") and STATE.battle_system and STATE.phase == "battle":
         bs = STATE.battle_system
+        if STATE.is_ai_turn():
+            STATE.last_event = "电脑正在行动，请等待"
+            return STATE.to_json()
         if bs._is_game_over():
             STATE.finish_battle()
             return STATE.to_json()
@@ -410,12 +578,16 @@ def handle_api(path, body, handler):
         turn_events = [morale_event] + STATE.drain_combat_events()
         current_player = c.player1.name if bs.current_side == c.player1.team else c.player2.name
         STATE.last_event = f"第{STATE.turn_count}回合，轮到{current_player}行动"
+        STATE.begin_ai_turn()
         response = STATE.to_json()
         response["turn_events"] = turn_events
         return response
 
     # POST /api/battle/skill -> {"general_id": 1}
     if path == "/api/battle/skill" and STATE.battle_system and STATE.phase == "battle":
+        if STATE.is_ai_turn():
+            STATE.last_event = "电脑正在行动，请等待"
+            return STATE.to_json()
         bs = STATE.battle_system
         from src.skills.skill_base import TargetType
         caster = None
@@ -456,6 +628,11 @@ def handle_api(path, body, handler):
                 skill_options["mode"] = body["skill_mode"]
             if body.get("skill_timing"):
                 skill_options["timing"] = body["skill_timing"]
+            try:
+                requested_target_id = (int(body["target_id"])
+                                       if body.get("target_id") is not None else None)
+            except (TypeError, ValueError):
+                requested_target_id = None
             if tt == TargetType.SELF:
                 # 石兵八阵虽标为 SELF，但实际需要玩家指定敌方 2x2 区域。
                 targets = ([skill_options] if
@@ -472,13 +649,22 @@ def handle_api(path, body, handler):
             elif tt == TargetType.ALL_ALLIES:
                 targets = caster_team.get_alive_generals()
             elif tt == TargetType.AREA_ALLY:
-                targets = [skill_options] if skill_options else []
+                targets = [skill_options] if skill_options else [caster]
             elif tt in (TargetType.SINGLE_ENEMY, TargetType.FRONT_ROW_ENEMY, TargetType.BACK_ROW_ENEMY, TargetType.RANDOM_ENEMY):
                 enemy_team = bs.team2 if caster_team == bs.team1 else bs.team1
                 enemy = enemy_team.get_alive_generals()
                 if tt == TargetType.FRONT_ROW_ENEMY:
                     enemy = enemy_team.get_front_row_generals() if hasattr(enemy_team, 'get_front_row_generals') else enemy
-                targets = [enemy[0]] if enemy else []
+                elif tt == TargetType.BACK_ROW_ENEMY:
+                    front = enemy_team.get_front_row_generals() if hasattr(enemy_team, 'get_front_row_generals') else []
+                    enemy = [general for general in enemy if general not in front]
+                requested_target = next(
+                    (general for general in enemy if general.general_id == requested_target_id),
+                    None,
+                )
+                # RANDOM_ENEMY 保留技能内部的随机语义；其余单体技能尊重玩家点选。
+                targets = ([requested_target] if requested_target is not None
+                           and tt != TargetType.RANDOM_ENEMY else enemy[:1])
             elif tt == TargetType.ALL_ENEMIES:
                 enemy_team = bs.team2 if caster_team == bs.team1 else bs.team1
                 targets = enemy_team.get_alive_generals()
@@ -526,6 +712,9 @@ def handle_api(path, body, handler):
 
     # POST /api/battle/attack -> {"attacker_id": 1, "target_id": 2} or legacy indexes
     if path == "/api/battle/attack" and STATE.battle_system and STATE.phase == "battle":
+        if STATE.is_ai_turn():
+            STATE.last_event = "电脑正在行动，请等待"
+            return STATE.to_json()
         bs = STATE.battle_system
         attackers = bs.current_side.get_alive_generals()
         enemy_team = bs._get_enemy_team()
@@ -566,6 +755,8 @@ def handle_api(path, body, handler):
                 return STATE.to_json()
             target_hp_before = target.current_hp
             guess = body.get("guess", None)  # 攻速判定奇偶猜测
+            bravery_guess = body.get("bravery_guess", None)
+            charisma_guess = body.get("charisma_guess", None)
             speed_mode = None
             if attacker.has_debuff_type("attack_speed_required"):
                 speed_mode = "attack_required"
@@ -576,8 +767,17 @@ def handle_api(path, body, handler):
                 attacker.last_attack_speed_judgment = None
             target_pos_before = (c.player1.team.get_general_position(target) or
                                 c.player2.team.get_general_position(target))
+            attacker_pos_before = (c.player1.team.get_general_position(attacker) or
+                                   c.player2.team.get_general_position(attacker))
+            if target_pos_before is not None:
+                STATE.display_positions[target.general_id] = target_pos_before
+            if attacker_pos_before is not None:
+                STATE.display_positions[attacker.general_id] = attacker_pos_before
             STATE.clear_combat_events()
-            attack_result = STATE.ensure_rules().attack(attacker, target, guess=guess)
+            attack_result = STATE.ensure_rules().attack(
+                attacker, target, guess=guess,
+                bravery_guess=bravery_guess, charisma_guess=charisma_guess,
+            )
             dmg = attack_result.get("damage", 0)
             if speed_mode and attacker.last_attack_speed_judgment:
                 speed_judgment = dict(attacker.last_attack_speed_judgment)
@@ -741,7 +941,7 @@ class GameServer(BaseHTTPRequestHandler):
 
 def start():
     os.makedirs(WEB_DIR, exist_ok=True)
-    port = int(os.environ.get("PORT", "8089"))
+    port = int(os.environ.get("PORT", "8090"))
     server = ThreadingHTTPServer(("0.0.0.0", port), GameServer)
     print("=== 三国武将卡牌游戏 Web 版 ===")
     print(f"   打开浏览器访问: http://localhost:{port}")
