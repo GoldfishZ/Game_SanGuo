@@ -43,6 +43,8 @@ class Team:
         self.formation_setup_complete = False
         self.temporary_formation_effects = []
         self.pending_morale_rewards = []
+        # 记录阵亡前的位置，供复活技能把武将重新放回战场。
+        self.defeated_positions: Dict['General', Tuple[int, int]] = {}
 
     def position_general(self, general: 'General', row: int, col: int) -> bool:
         """
@@ -69,6 +71,7 @@ class Team:
                     self.formation[r][c] = None
                     
         self.formation[row][col] = general
+        self.defeated_positions.pop(general, None)
         return True
     
     def get_general_position(self, general: 'General') -> Optional[Tuple[int, int]]:
@@ -317,9 +320,46 @@ class Team:
         for row in range(3):
             for col in range(4):
                 if self.formation[row][col] == general:
+                    self.defeated_positions[general] = (row, col)
                     self.formation[row][col] = None
                     return True
         return False
+
+    def restore_general_to_formation(self, general: 'General') -> Optional[Tuple[int, int]]:
+        """将复活武将放回阵亡前的阵位，冲突时使用最近的空位。"""
+        current_position = self.get_general_position(general)
+        if current_position is not None:
+            self.defeated_positions.pop(general, None)
+            return current_position
+
+        preferred = self.defeated_positions.get(general)
+        empty_positions = [
+            (row, col)
+            for row in range(3)
+            for col in range(4)
+            if self.formation[row][col] is None
+        ]
+        if not empty_positions:
+            return None
+
+        if preferred in empty_positions:
+            position = preferred
+        elif preferred is not None:
+            position = min(
+                empty_positions,
+                key=lambda item: (
+                    abs(item[0] - preferred[0]) + abs(item[1] - preferred[1]),
+                    item[0],
+                    item[1],
+                ),
+            )
+        else:
+            position = empty_positions[0]
+
+        row, col = position
+        self.formation[row][col] = general
+        self.defeated_positions.pop(general, None)
+        return position
     
     def setup_formation_phase(self) -> bool:
         """
@@ -333,6 +373,7 @@ class Team:
         
         # 重置阵型
         self.formation = [[None for _ in range(4)] for _ in range(3)]
+        self.defeated_positions.clear()
         self.formation_setup_complete = False
         return True
     
@@ -408,6 +449,7 @@ class Team:
             general._team = None  # 清除队伍引用
             # 同时从阵型中移除
             self.remove_general_from_formation(general)
+            self.defeated_positions.pop(general, None)
             return True
         return False
     

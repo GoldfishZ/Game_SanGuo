@@ -1564,7 +1564,9 @@ class TaipingArtsSkill(Skill):
     def can_use(self, caster, team=None) -> bool:
         if not super().can_use(caster, team):
             return False
-        return self._get_use_count(caster) < self.max_uses_per_game
+        if self._get_use_count(caster) >= self.max_uses_per_game:
+            return False
+        return team is None or any(not general.is_alive for general in team.generals)
 
     def execute(self, caster, targets, battle_context):
         team = battle_context.get_team_for_general(caster)
@@ -1583,11 +1585,18 @@ class TaipingArtsSkill(Skill):
             revive_hp = max(1, general.max_hp // 2)
             general.is_alive = True
             general.current_hp = revive_hp
+            position = team.restore_general_to_formation(general)
+            if position is None:
+                general.is_alive = False
+                general.current_hp = 0
+                continue
             details.append({
                 "target": general.name,
                 "effect": "复活",
                 "current_hp": general.current_hp,
                 "max_hp": general.max_hp,
+                "row": position[0],
+                "col": position[1],
             })
 
         self._increment_use_count(caster)

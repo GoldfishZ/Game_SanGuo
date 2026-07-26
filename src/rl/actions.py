@@ -76,9 +76,15 @@ def action_mask(env) -> np.ndarray:
     if env.subphase == "skill":
         mask[END_SKILL] = 0
         for caster in team.get_alive_generals():
-            if not (caster.can_use_active_skill() and caster.can_use_skill() and team.current_morale >= caster.active_skill.morale_cost):
+            if not (
+                caster.can_use_active_skill()
+                and caster.can_use_skill()
+                and caster.active_skill.can_use(caster, team)
+            ):
                 continue
             actor = slot_for(team, caster)
+            if actor < 0:
+                continue
             tt = caster.active_skill.target_type
             if tt in (TargetType.AREA_ENEMY, TargetType.AREA_ALLY) or caster.active_skill.skill_id == "stone_sentinel_maze":
                 for area in range(GRID_SIZE):
@@ -101,8 +107,12 @@ def action_mask(env) -> np.ndarray:
             if not attacker.can_attack():
                 continue
             actor = slot_for(team, attacker)
+            if actor < 0:
+                continue
             for target in bs._get_attack_targets_for_attacker(attacker):
                 target_slot = slot_for(enemy, target)
+                if target_slot < 0:
+                    continue
                 for guess in GUESSES:
                     mask[encode(Action("attack", actor, target_slot, guess=guess))] = 0
     return mask

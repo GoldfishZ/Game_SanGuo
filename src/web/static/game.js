@@ -1463,10 +1463,6 @@ async function playSkillResolution(skillResult, skillName, fallbackKind, skillId
     }
     return;
   }
-  if (skillId === "weakening_chain") {
-    var targetId = await selectEnemyGeneralForSkill("衰弱的连计：指定敌方武将");
-    return targetId === null ? null : { targetId:targetId };
-  }
   if (skillId === "meteor_rite") {
     for (var meteorIndex = 0; meteorIndex < details.length; meteorIndex++) {
       var meteorDetail = details[meteorIndex];
@@ -1932,6 +1928,11 @@ async function chooseSkillCastOptions(general) {
   var skillId = general.skill_id || "";
   var area;
   var choice;
+
+  if (skillId === "weakening_chain") {
+    var targetId = await selectEnemyGeneralForSkill("衰弱的连计：指定敌方武将");
+    return targetId === null ? null : { targetId:targetId };
+  }
 
   if (skillId === "meteor_rite") {
     var selectedRow = await selectVerticalColumnForSkill();

@@ -22,8 +22,10 @@ def create_server(port: int = 0) -> ThreadingHTTPServer:
 
 
 def smoke_test() -> int:
-    """验证发行包的网页、PvP，以及三档 PvE 模型加载和推理。"""
+    """验证网页、PvP、关键技能，以及三档 PvE 模型加载和推理。"""
+    from src.battle.battle_system import BattleContext
     from src.game_data.generals_config import get_general_by_name
+    from src.models.team import Team
     from src.rl.env_v3 import SanguoEnv
     from src.rl.opponents import HeuristicOpponent
     from src.web.server import GameState
@@ -49,6 +51,46 @@ def smoke_test() -> int:
         or (revealed.get("row"), revealed.get("col")) != (1, 2)
     ):
         raise RuntimeError("PvE 伏兵显形后未恢复武将卡和阵位")
+
+    revival_team = Team("黄巾军")
+    revival_enemy = Team("复活测试敌军")
+    zhang_jiao = get_general_by_name("张角")
+    fallen_ally = get_general_by_name("甘宁")
+    for general in (zhang_jiao, fallen_ally):
+        revival_team.add_general(general)
+    revival_team.position_general(zhang_jiao, 0, 0)
+    revival_team.position_general(fallen_ally, 1, 1)
+    fallen_ally.is_alive = False
+    fallen_ally.current_hp = 0
+    revival_team.remove_general_from_formation(fallen_ally)
+    revival = revival_team.use_skill(
+        zhang_jiao, [], BattleContext(revival_team, revival_enemy),
+    )
+    if (
+        not revival.get("success")
+        or not fallen_ally.is_alive
+        or revival_team.get_general_position(fallen_ally) != (1, 1)
+    ):
+        raise RuntimeError("太平要术未把阵亡武将复活到战场原位")
+
+    weakening_team = Team("魏军")
+    weakening_enemy = Team("连计测试敌军")
+    guo_huanghou = get_general_by_name("郭皇后")
+    strong_enemy = get_general_by_name("张飞")
+    weak_enemy = get_general_by_name("张角")
+    weakening_team.add_general(guo_huanghou)
+    weakening_enemy.add_general(strong_enemy)
+    weakening_enemy.add_general(weak_enemy)
+    strong_force = strong_enemy.get_effective_force()
+    weakening = weakening_team.use_skill(
+        guo_huanghou, [], BattleContext(weakening_team, weakening_enemy),
+    )
+    if (
+        not weakening.get("success")
+        or strong_enemy.get_effective_force() != strong_force - 3
+        or weak_enemy.get_effective_force() != weak_enemy.force
+    ):
+        raise RuntimeError("电脑衰弱的连计未自动选择高武力敌将")
 
     for difficulty in ("easy", "normal", "hard"):
         pve = GameState()
@@ -87,7 +129,7 @@ def smoke_test() -> int:
             page = response.read().decode("utf-8")
         if state.get("phase") != "menu" or "三国武将卡牌游戏" not in page:
             raise RuntimeError("启动器返回了异常的游戏内容")
-        print("桌面启动器自检通过：PvP、三档 PvE 模型与伏兵隐藏均可用")
+        print("桌面启动器自检通过：PvP、三档 PvE 模型、伏兵与关键技能均可用")
         return 0
     finally:
         server.shutdown()

@@ -1,4 +1,5 @@
 import json
+import os
 from itertools import combinations
 from unittest.mock import patch
 
@@ -233,6 +234,26 @@ def test_web_weakening_chain_respects_selected_enemy_target():
     assert state["skill_result"]["details"][0]["target"] == selected_enemy.name
     assert first_enemy.get_effective_force() == first_force
     assert selected_enemy.get_effective_force() == selected_force - 3
+
+
+def test_weakening_chain_target_prompt_only_runs_before_human_cast():
+    """电脑技能结算不得再次要求玩家替电脑选择被削弱目标。"""
+    game_js = os.path.join(
+        os.path.dirname(os.path.dirname(__file__)), "src", "web", "static", "game.js",
+    )
+    with open(game_js, encoding="utf-8") as source_file:
+        source = source_file.read()
+
+    resolution = source[
+        source.index("async function playSkillResolution"):
+        source.index("async function chooseSkillCastOptions")
+    ]
+    selection = source[
+        source.index("async function chooseSkillCastOptions"):
+        source.index("async function askAdjacentDirection")
+    ]
+    assert 'skillId === "weakening_chain"' not in resolution
+    assert 'skillId === "weakening_chain"' in selection
 
 def test_web_thunder_strike_uses_caster_guess_once_and_triggers_on_success():
     """Web 实际路径必须把玩家猜测传入，并用一次成功判定触发整次雷击。"""

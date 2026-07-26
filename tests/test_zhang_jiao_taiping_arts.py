@@ -4,13 +4,16 @@
 
 import os
 import sys
+from types import SimpleNamespace
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.game_data.generals_config import get_general_by_name
 from src.battle.battle_system import BattleContext
+from src.battle.battle_system import BattleSystem
 from src.models.general import Camp, General, Rarity
 from src.models.team import Team
+from src.rl.actions import Action, action_mask, encode
 
 
 def make_ally(name, force=4, intelligence=4):
@@ -53,8 +56,12 @@ def test_taiping_arts_revives_all_dead_allies_at_half_hp():
 
     for general in [zhang_jiao, dead_a, dead_b, alive]:
         team.add_general(general)
+    for col, general in enumerate([zhang_jiao, dead_a, dead_b, alive]):
+        assert team.position_general(general, 1, col)
     kill(dead_a)
     kill(dead_b)
+    assert team.remove_general_from_formation(dead_a)
+    assert team.remove_general_from_formation(dead_b)
     alive.current_hp = 3
 
     result = team.use_skill(zhang_jiao, [], BattleContext(team, enemy_team))
@@ -65,9 +72,55 @@ def test_taiping_arts_revives_all_dead_allies_at_half_hp():
     assert team.current_morale == 6
     assert dead_a.is_alive is True
     assert dead_a.current_hp == dead_a.max_hp // 2
+    assert team.get_general_position(dead_a) == (1, 1)
     assert dead_b.is_alive is True
     assert dead_b.current_hp == dead_b.max_hp // 2
+    assert team.get_general_position(dead_b) == (1, 2)
     assert alive.current_hp == 3
+
+
+def test_taiping_arts_is_unavailable_without_defeated_allies():
+    zhang_jiao = get_general_by_name("张角")
+    ally = make_ally("存活友军")
+    team = Team("黄巾军")
+    enemy_team = Team("敌队")
+    team.add_general(zhang_jiao)
+    team.add_general(ally)
+
+    result = team.use_skill(zhang_jiao, [], BattleContext(team, enemy_team))
+
+    assert result["success"] is False
+    assert team.current_morale == 12
+    assert zhang_jiao._has_used_skill_this_turn is False
+
+
+def test_taiping_arts_action_is_only_legal_with_a_defeated_ally():
+    zhang_jiao = get_general_by_name("张角")
+    ally = make_ally("待复活友军")
+    enemy = make_ally("敌军")
+    team = Team("黄巾军")
+    enemy_team = Team("敌队")
+    for general in [zhang_jiao, ally]:
+        team.add_general(general)
+    enemy_team.add_general(enemy)
+    assert team.position_general(zhang_jiao, 0, 0)
+    assert team.position_general(ally, 0, 1)
+    assert enemy_team.position_general(enemy, 0, 0)
+    battle = BattleSystem(
+        team, enemy_team, callbacks=None, first_player_team_name=team.team_name,
+    )
+    env = SimpleNamespace(
+        learning_team=team,
+        enemy_team=enemy_team,
+        battle_system=battle,
+        subphase="skill",
+    )
+    skill_action = encode(Action("skill_target", actor_slot=0, target_slot=0))
+
+    assert action_mask(env)[skill_action] == 1
+    kill(ally)
+    assert team.remove_general_from_formation(ally)
+    assert action_mask(env)[skill_action] == 0
 
 
 def test_taiping_arts_can_only_be_used_twice_per_game():
@@ -101,5 +154,7 @@ def test_taiping_arts_can_only_be_used_twice_per_game():
 if __name__ == "__main__":
     test_zhang_jiao_data_and_skill()
     test_taiping_arts_revives_all_dead_allies_at_half_hp()
+    test_taiping_arts_is_unavailable_without_defeated_allies()
+    test_taiping_arts_action_is_only_legal_with_a_defeated_ally()
     test_taiping_arts_can_only_be_used_twice_per_game()
     print("张角太平要术测试通过")
