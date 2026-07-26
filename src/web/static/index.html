@@ -6,7 +6,7 @@
 <title>三国武将卡牌游戏</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
 <script>window.gsap = window.gsap || null; if(!window.gsap) console.warn('GSAP unavailable, using CSS fallback');</script>
-<link rel="stylesheet" href="/styles.css?v=19">
+<link rel="stylesheet" href="/styles.css?v=21">
 </head>
 <body>
 
@@ -18,10 +18,21 @@
     <div class="menu-sub">霸·三国志大战 · 卡牌对战</div>
     <div class="menu-intro">运筹帷幄之中，决胜千里之外<br>挑选你的武将，排兵布阵，击败对手！</div>
     <div class="game-mode-picker" aria-label="选择游戏模式">
-      <button class="mode-card pve" type="button" onclick="startGame('pve')">
+      <div class="mode-card pve difficulty-card">
         <span class="mode-kicker">单人挑战</span><strong>人机对战 · PvE</strong>
-        <small>与训练模型交锋，电脑自动选将、布阵与行动</small>
-      </button>
+        <small>选择难度，与不同强度的选将、布阵和战斗模型交锋</small>
+        <div class="difficulty-actions" aria-label="选择人机难度">
+          <button type="button" class="difficulty-btn easy" onclick="startGame('pve','easy')">
+            <b>简单</b><span>新手演武</span>
+          </button>
+          <button type="button" class="difficulty-btn normal" onclick="startGame('pve','normal')">
+            <b>普通</b><span>沙场宿将</span>
+          </button>
+          <button type="button" class="difficulty-btn hard" onclick="startGame('pve','hard')">
+            <b>困难</b><span>天下名将</span>
+          </button>
+        </div>
+      </div>
       <button class="mode-card pvp" type="button" onclick="startGame('pvp')">
         <span class="mode-kicker">本地双人</span><strong>双人对战 · PvP</strong>
         <small>双方依次选将、布阵，在同一设备完成对局</small>
@@ -198,7 +209,7 @@
           <article class="trait-rule fence"><header><i>栅</i><b>防栅</b><span>一次格挡</span></header><p><strong>触发条件：</strong>第一次受到普通攻击。技能伤害不会消耗防栅；拥有“无视防栅”效果的普攻可以绕过它。</p><p><strong>效果：</strong>将该次普攻伤害完全降为0并使防栅破碎。当前规则中，破碎后的防栅本局不会自动重建。</p></article>
           <article class="trait-rule chain"><header><i>连</i><b>连计</b><span>同荣共损</span></header><p><strong>共享状态：</strong>己方多名存活的连计武将会同步所持增益和减益；其中一人获得或失去相关状态时，连计体系会重新同步。</p><p><strong>分担伤害：</strong>连计武将受伤时，伤害按存活连计人数整除，并让每名连计武将承受分担后的数值。阵亡者不再参与后续共享。</p></article>
           <article class="trait-rule revive"><header><i>生</i><b>复活</b><span>每局一次</span></header><p><strong>触发条件：</strong>武将首次因伤害降至0生命。</p><p><strong>效果：</strong>立即恢复为最大生命的一半（向下取整）并继续留在战场，每局仅能成功一次。因为武将没有最终阵亡，同一次伤害不会再触发魅力。</p></article>
-          <article class="trait-rule ambush"><header><i>伏</i><b>伏兵</b><span>隐匿反击</span></header><p><strong>隐藏：</strong>隐藏期间不能被敌方普通攻击直接选中；使用自己的主动技能、完成伏击反击，或队友全部阵亡后会破隐。</p><p><strong>反击：</strong>相邻8格内的友军遭到普攻时，一名尚未触发的隐藏伏兵会对攻击者造成原伤害一半、最低1点的反击伤害。每名伏兵每局只能反击一次，且不会交换阵位。</p></article>
+          <article class="trait-rule ambush"><header><i>伏</i><b>伏兵</b><span>隐匿反击</span></header><p><strong>隐藏：</strong>PvE 中敌方伏兵的身份和阵位均不可见，也不能被普通攻击直接选中；使用自己的主动技能、完成伏击反击，或队友全部阵亡后会破隐，武将卡与阵位会同时显现。</p><p><strong>反击：</strong>相邻8格内的友军遭到普攻时，一名尚未触发的隐藏伏兵会对攻击者造成原伤害一半、最低1点的反击伤害。每名伏兵每局只能反击一次，且不会交换阵位。</p></article>
         </div>
       </section>    </div>
     <div style="text-align:center;margin-top:12px"><div class="btn" onclick="showScreen('menu')">返回主菜单</div></div>
@@ -241,7 +252,7 @@
 
 <script src="/tooltips.js?v=12"></script>
 <script src="/tutorial.js?v=13"></script>
-<script src="/game.js?v=28"></script>
+<script src="/game.js?v=30"></script>
 <script src="/frontend_stress.js?v=3"></script>
 <script>
 // 出征计数

@@ -118,6 +118,37 @@ def test_ppo_v3_completes_epochs_when_epoch_mean_kl_is_safe():
     assert metrics["early_stop_kl"] == 0.0
 
 
+def test_ppo_v3_chunks_explained_variance_forward_pass():
+    class BatchRecordingActorCritic(TinyActorCritic):
+        def __init__(self):
+            super().__init__()
+            self.batch_sizes = []
+
+        def forward(self, observations, masks=None):
+            self.batch_sizes.append(len(observations))
+            return super().forward(observations, masks)
+
+    torch.manual_seed(11)
+    model = BatchRecordingActorCritic()
+    observations = torch.randn(10, 3)
+    masks = torch.zeros((10, 2), dtype=torch.bool)
+    with torch.no_grad():
+        logits, _ = model(observations, masks)
+        distribution = torch.distributions.Categorical(logits=logits)
+        actions_taken = distribution.sample()
+        old_log_probs = distribution.log_prob(actions_taken)
+    model.batch_sizes.clear()
+    batch = {
+        "observations": observations.numpy(), "masks": masks.numpy(),
+        "actions": actions_taken.numpy(), "log_probs": old_log_probs.numpy(),
+        "returns": np.zeros(10, dtype=np.float32),
+        "advantages": np.linspace(-1, 1, 10, dtype=np.float32),
+    }
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.0)
+    ppo_update(model, optimizer, batch, epochs=1, minibatch_size=4, target_kl=0.01)
+    assert max(model.batch_sizes) <= 4
+
+
 def test_v3_selfplay_uses_stratified_anchor_payloads(tmp_path):
     train_ppo_v3.settings.update(train_ppo_v3.V3_DEFAULTS)
     pool = HistoricalPolicyPool(tmp_path)

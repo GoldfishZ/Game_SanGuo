@@ -31,6 +31,12 @@ var galleryFiltered = [];
 var _lastTurnSignature = "";
 var _aiTurnRunning = false;
 var _aiTurnGeneration = 0;
+var AI_DIFFICULTY_LABELS = {easy: "简单", normal: "普通", hard: "困难"};
+
+function pveDifficultySuffix(state) {
+  if (!state || state.mode !== "pve") return "";
+  return " · PvE " + (AI_DIFFICULTY_LABELS[state.ai_difficulty] || "普通");
+}
 
 /**
  * 轻量战场声音：全部由 Web Audio 实时合成，不加载外部音频文件。
@@ -243,11 +249,14 @@ function call(endpoint, body) {
 // ============================================================================
 // SECTION 3: 主菜单 & 选将
 // ============================================================================
-function startGame(mode) {
+function startGame(mode, difficulty) {
   _lastTurnSignature = "";
   _aiTurnRunning = false;
   _aiTurnGeneration++;
-  return call("/new", { mode: mode || "pvp" }).then(function() { return renderSelection(); });
+  return call("/new", {
+    mode: mode || "pvp",
+    difficulty: difficulty || "normal"
+  }).then(function() { return renderSelection(); });
 }
 
 function renderSelection() {
@@ -256,7 +265,8 @@ function renderSelection() {
   var r = G;
   if (!r) return;
   document.getElementById("sel-title").textContent =
-    (r.phase === "select_p1" ? "玩家1" : "玩家2") + " — 选择武将";
+    (r.phase === "select_p1" ? "玩家1" : "玩家2") + " — 选择武将" +
+    pveDifficultySuffix(r);
   renderCards(r.pool);
   renderPoolBar();
 }
@@ -403,7 +413,8 @@ function renderFormation() {
   gridWrap.classList.remove("p1", "p2");
   gridWrap.classList.add(teamKey);
   document.getElementById("form-title").textContent =
-    (r.phase === "formation_p1" ? "玩家1" : "玩家2") + " — 布置阵型";
+    (r.phase === "formation_p1" ? "玩家1" : "玩家2") + " — 布置阵型" +
+    pveDifficultySuffix(r);
   var generals = r[teamKey] ? (r[teamKey].generals || []) : [];
   renderFormList(generals);
   renderFormGrid(generals);
@@ -835,7 +846,8 @@ function renderBattle() {
     updateMoraleBars(r);
 
     document.getElementById("bturn").textContent =
-      "第" + (r.turn || 1) + "回合 — " + (r.current_player || "");
+      "第" + (r.turn || 1) + "回合 — " + (r.current_player || "") +
+      pveDifficultySuffix(r);
 
     var p1IsAlly = (r.current_team === "p1");
     renderBattleGrid("bside1-grid", r.p1, p1IsAlly);
@@ -1003,16 +1015,6 @@ function renderBattleGrid(gridId, p, isAlly) {
 
 /** 构建单个武将格子的 HTML（纯函数，便于测试和维护） */
 function buildBcellHTML(g, r, c, gridRow, gridColumn, isAlly) {
-  if (g._ambushConcealed) {
-    return '<div class="bcell ambush-hidden ambush-concealed locked"' +
-      ' data-id="' + g.id + '" data-row="' + r + '" data-col="' + c + '"' +
-      ' data-isally="' + (isAlly ? "1" : "0") + '" data-name="未知伏兵"' +
-      ' style="grid-row:' + gridRow + ';grid-column:' + gridColumn + '">' +
-      '<div class="ambush-fog" aria-hidden="true"><i></i><i></i><i></i></div>' +
-      '<div class="ambush-seal">伏</div>' +
-      '<div class="cname">伏兵潜伏</div><div class="chp">身份未明</div>' +
-      '</div>';
-  }
   var hpPct = g.maxHp > 0 ? (g.hp / g.maxHp * 100) : 0;
   var hpClass = hpPct > 60 ? "" : (hpPct > 30 ? "warn" : "danger");
   var imgSrc = g.image ? "/generals/" + g.image : "";
@@ -1510,18 +1512,28 @@ async function playSkillResolution(skillResult, skillName, fallbackKind, skillId
 async function revealAmbushGeneral(generalId, message) {
   var cell = battleCellById(generalId);
   var revealed = generalById(G, generalId);
-  if (!cell || !revealed || revealed._ambushConcealed) return cell;
+  if (!revealed || revealed._ambushConcealed) return cell;
 
-  if (cell.classList.contains("ambush-concealed")) {
-    var row = parseInt(cell.getAttribute("data-row"));
-    var col = parseInt(cell.getAttribute("data-col"));
-    var isAlly = cell.getAttribute("data-isally") === "1";
-    var gridRow = cell.style.gridRow || "auto";
-    var gridColumn = cell.style.gridColumn || "auto";
+  if (!cell || cell.classList.contains("ambush-concealed")) {
+    var ownerKey = (G.p1 && (G.p1.generals || []).some(function(g) {
+      return g.id === generalId;
+    })) ? "p1" : "p2";
+    var gridId = ownerKey === "p1" ? "bside1-grid" : "bside2-grid";
+    var row = revealed.row;
+    var col = revealed.col;
+    var emptyCell = document.querySelector(
+      "#" + gridId + ' .bcell.empty[data-row="' + row + '"][data-col="' + col + '"]'
+    );
+    var oldCell = cell || emptyCell;
+    if (!oldCell) return null;
+    var isAlly = G.current_team === ownerKey;
+    var visual = formationVisualPosition(ownerKey === "p1", row, col);
+    var gridRow = oldCell.style.gridRow || visual.row;
+    var gridColumn = oldCell.style.gridColumn || visual.col;
     var holder = document.createElement("div");
     holder.innerHTML = buildBcellHTML(revealed, row, col, gridRow, gridColumn, isAlly);
     var replacement = holder.firstElementChild;
-    cell.replaceWith(replacement);
+    oldCell.replaceWith(replacement);
     cell = replacement;
   }
   cell.classList.remove("ambush-hidden", "ambush-concealed", "locked");

@@ -8,6 +8,7 @@ import json
 import os
 import random
 import threading
+from copy import deepcopy
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs
 
@@ -79,6 +80,7 @@ class GameState:
         self.dice_p2 = 0   # 玩家2骰子值
         self.compensation = ""  # 后手补偿说明
         self.mode = "pvp"
+        self.ai_difficulty = "normal"
         self.pve_controller = None
         self.last_ai_actions = []
         self.ai_subphase = "skill"
@@ -107,8 +109,10 @@ class GameState:
         second = shuffled[pool_size:pool_size * 2]
         return self._make_pool(first), self._make_pool(second)
 
-    def reset(self, mode="pvp"):
+    def reset(self, mode="pvp", difficulty="normal"):
         self.mode = mode if mode in ("pvp", "pve") else "pvp"
+        self.ai_difficulty = difficulty if difficulty in ("easy", "normal", "hard") else "normal"
+        self.pve_controller = None
         self.controller = GameFlowController()
         if self.mode == "pve":
             self.controller.player2.name = "电脑"
@@ -129,7 +133,9 @@ class GameState:
 
     def ensure_pve_controller(self):
         if self.pve_controller is None:
-            self.pve_controller = PVEController(device="cpu")
+            self.pve_controller = PVEController(
+                difficulty=self.ai_difficulty, device="cpu",
+            )
         return self.pve_controller
 
     def auto_ai_draft(self):
@@ -185,10 +191,43 @@ class GameState:
                 self, self.controller.player2.team, self.controller.player1.team,
                 self.ai_subphase,
             )
+            trace = self._conceal_hidden_ai_actor(trace)
             self.ai_action_count += 1
             self.ai_subphase = trace.get("next_subphase", self.ai_subphase)
             self.last_ai_actions.append(trace)
             return trace
+
+    def _conceal_hidden_ai_actor(self, trace):
+        """Do not leak an unrevealed PvE ambush through the action trace."""
+        actor_id = trace.get("actor_id")
+        if self.mode != "pve" or actor_id is None or not self.controller:
+            return trace
+        actor = next(
+            (
+                general for general in self.controller.player2.selected_generals
+                if general.general_id == actor_id
+            ),
+            None,
+        )
+        ambush = (
+            actor.get_passive_skill("伏兵")
+            if actor and actor.has_passive_skill("伏兵") else None
+        )
+        if not (actor and actor.is_alive and ambush and ambush.is_hidden):
+            return trace
+        public_trace = deepcopy(trace)
+        public_trace.update({
+            "actor_id": None,
+            "actor_name": "未知伏兵",
+            "actor_position": None,
+            "skill_id": "",
+            "skill_name": "",
+        })
+        result = public_trace.get("result")
+        if isinstance(result, dict):
+            result.pop("attacker_id", None)
+        self.last_event = "电脑：未知伏兵从暗处发动行动"
+        return public_trace
 
     def finish_battle(self):
         """结束 Web 战斗，并把引擎队名统一转换为前端玩家名。"""
@@ -264,6 +303,7 @@ class GameState:
                   "human_team": "p1", "ai_team": "p2" if self.mode == "pve" else None}
         if self.mode == "pve":
             ai = self.ensure_pve_controller()
+            result["ai_difficulty"] = self.ai_difficulty
             result["ai_ready"] = ai.available
             result["ai_errors"] = list(ai.load_errors)
             result["ai_actions"] = list(self.last_ai_actions)
@@ -365,18 +405,15 @@ class GameState:
                 and g.is_alive and ambush and ambush.is_hidden
             )
             if concealed:
-                # Keep only board occupancy and rule-state fields. Identity, art,
-                # stats, traits and skill data stay server-side until reveal.
-                general_json.update({
-                    "name": "未知伏兵", "hp": 0, "maxHp": 0,
-                    "force": 0, "intelligence": 0, "cost": 0,
-                    "camp": "", "rarity": "",
-                    "effective_force": 0, "effective_intelligence": 0,
-                    "skill": "", "skill_id": "", "skill_desc": "",
-                    "_targetType": "", "skill_cost": 0,
-                    "image": "", "attributes": [], "buffs": [], "debuffs": [],
+                # Keep only a roster-count placeholder. No stable id or board
+                # coordinate reaches the PvE client before the ambush reveals.
+                general_json = {
+                    "name": "未知伏兵",
+                    "alive": True,
+                    "row": -1,
+                    "col": -1,
                     "_ambushConcealed": True,
-                })
+                }
             else:
                 general_json["_ambushConcealed"] = False
             gens.append(general_json)
@@ -398,7 +435,7 @@ def handle_api(path, body, handler):
 
     # POST /api/new → 开始新游戏
     if path == "/api/new":
-        STATE.reset(body.get("mode", "pvp"))
+        STATE.reset(body.get("mode", "pvp"), body.get("difficulty", "normal"))
         return STATE.to_json()
 
     # POST /api/select → {"general_ids": [1,2,...]}

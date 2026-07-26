@@ -13,6 +13,8 @@ $work = Join-Path $root "build"
 $staticData = (Join-Path $root "src\web\static") + ";src\web\static"
 $generalData = (Join-Path $root "assets\images\generals_webp") + ";assets\images\generals_webp"
 $backgroundData = (Join-Path $root "assets\images\backgrounds_webp") + ";assets\images\backgrounds_webp"
+$modelData = (Join-Path $root "assets\models\pve") + ";assets\models\pve"
+$releaseReadme = Join-Path $root "docs\release-readme-windows.txt"
 
 Push-Location $root
 try {
@@ -24,28 +26,29 @@ try {
     $pyiArgs = @(
         "--noconfirm",
         "--clean",
-        "--onefile",
+        "--onedir",
         "--console",
         "--name", "Game_SanGuo",
         "--distpath", $dist,
         "--workpath", $work,
         "--specpath", $work,
         "--exclude-module", "pygame",
-        "--exclude-module", "numpy",
         "--exclude-module", "pytest",
         "--add-data", $staticData,
         "--add-data", $generalData,
         "--add-data", $backgroundData,
+        "--add-data", $modelData,
         $entry
     )
 
-    Write-Host "Building the Windows single-file release..." -ForegroundColor Cyan
+    Write-Host "Building the Windows self-contained folder release..." -ForegroundColor Cyan
     & $Python -m PyInstaller @pyiArgs
     if ($LASTEXITCODE -ne 0) {
         throw "PyInstaller failed with exit code $LASTEXITCODE"
     }
 
-    $exe = Join-Path $dist "Game_SanGuo.exe"
+    $bundle = Join-Path $dist "Game_SanGuo"
+    $exe = Join-Path $bundle "Game_SanGuo.exe"
     if (-not (Test-Path -LiteralPath $exe)) {
         throw "Build completed but the executable was not found: $exe"
     }
@@ -56,11 +59,20 @@ try {
         throw "Packaged executable smoke test failed with exit code $LASTEXITCODE"
     }
 
+    Copy-Item -LiteralPath $releaseReadme -Destination (Join-Path $bundle "游玩说明.txt") -Force
     $zip = Join-Path $dist "Game_SanGuo_Windows.zip"
-    Compress-Archive -LiteralPath $exe -DestinationPath $zip -Force
-    $size = [math]::Round((Get-Item -LiteralPath $exe).Length / 1MB, 1)
-    Write-Host "Build complete: $exe ($size MiB)" -ForegroundColor Green
+    Compress-Archive -Path (Join-Path $bundle "*") -DestinationPath $zip -Force
+    $size = [math]::Round(
+        (Get-ChildItem -LiteralPath $bundle -Recurse -File |
+            Measure-Object -Property Length -Sum).Sum / 1MB,
+        1
+    )
+    $zipHash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    Set-Content -LiteralPath (Join-Path $dist "Game_SanGuo_Windows.sha256") `
+        -Value "$zipHash  Game_SanGuo_Windows.zip" -Encoding Ascii
+    Write-Host "Build complete: $bundle ($size MiB)" -ForegroundColor Green
     Write-Host "Share this archive: $zip" -ForegroundColor Green
+    Write-Host "SHA-256: $zipHash" -ForegroundColor Green
 }
 finally {
     Pop-Location

@@ -1,0 +1,277 @@
+{
+  "schema": "sanguo-resumable-training-seed-v1",
+  "training_entry": "tools/rl/train_ppo_v3.py",
+  "config": "tools/rl/configs/ppo_selfplay_v3_multi_roster_long.yaml",
+  "checkpoint": {
+    "file": "checkpoints/ppo_latest.pt",
+    "update": 4906,
+    "sha256": "416aa40a14b046766b89af6dc2ba0c1c728a6ee80108e197ed377b9c469ae10b",
+    "bytes": 6219829,
+    "observation_schema": "sanguo-battle-observation-v2",
+    "observation_size": 5253,
+    "action_size": 722,
+    "model_schema": "sanguo-structured-action-actor-critic-v3",
+    "has_optimizer": true
+  },
+  "self_play": {
+    "metadata_file": "self_play/pool.json",
+    "entries": [
+      {
+        "id": "history-002960",
+        "file": "history-002960.pt",
+        "update": 2960,
+        "score": 0.603515625,
+        "sha256": "e9dc98d63d565447eb7bcfc9aba4c22060efe75f0a868824a67a1437915311d5",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-002560",
+        "file": "history-002560.pt",
+        "update": 2560,
+        "score": 0.599609375,
+        "sha256": "735fcf6a7e1f91c8329bf968cbfa2c664817b94d66cf4938b3162a6c6026d3e7",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-002440",
+        "file": "history-002440.pt",
+        "update": 2440,
+        "score": 0.599609375,
+        "sha256": "6b22a70e8ac2fcf44c9ee9f1cf834218a2d2bfcdb9f7de940b917dac7101215f",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-003840",
+        "file": "history-003840.pt",
+        "update": 3840,
+        "score": 0.59765625,
+        "sha256": "6f4accfa364f306213d0b84f016d388fc37b77ce719acdaf4290f87c880671c7",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-002680",
+        "file": "history-002680.pt",
+        "update": 2680,
+        "score": 0.59765625,
+        "sha256": "ffbaa3f73e96b48f979f3611203ddd631d9b15a3566b22de03172ef3bf81183e",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-004400",
+        "file": "history-004400.pt",
+        "update": 4400,
+        "score": 0.595703125,
+        "sha256": "d7e6684a4a23a0538f43aa0ed1f7247a187ca31578616d9d5c887e967726847b",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-003120",
+        "file": "history-003120.pt",
+        "update": 3120,
+        "score": 0.595703125,
+        "sha256": "50ee5a2e9ca59e3581a2076242ab97fc025e2e4065d23c010e0f40dfdf2b868f",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-002480",
+        "file": "history-002480.pt",
+        "update": 2480,
+        "score": 0.59375,
+        "sha256": "e2621c83af25e07bab0b179fc5307a14c941374c9055af9ea43a6c3f72551134",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-003600",
+        "file": "history-003600.pt",
+        "update": 3600,
+        "score": 0.591796875,
+        "sha256": "c039ac30c430639d2a43c8cfeeb1e5264303d93384d4f1d18d7f6d89e0d56902",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-003240",
+        "file": "history-003240.pt",
+        "update": 3240,
+        "score": 0.591796875,
+        "sha256": "e2c3872f852b6ef3a20035e6b9f5571e9a96172fec5e35ec062f3624942d7404",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-004560",
+        "file": "history-004560.pt",
+        "update": 4560,
+        "score": 0.58984375,
+        "sha256": "2b4d62b212c764cf869bb861f691e3d60b58ce9e0f130e3c6359925797d7a443",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-004880",
+        "file": "history-004880.pt",
+        "update": 4880,
+        "score": 0.587890625,
+        "sha256": "13a87820f4b31c2dbd8d98e63b5152ede35f2d782027cc6d60a7a11afdcacb76",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-003800",
+        "file": "history-003800.pt",
+        "update": 3800,
+        "score": 0.587890625,
+        "sha256": "aec860bfd6b8ff72736962172c2927d100e7769398c860f3a298d5550433a3ef",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-002640",
+        "file": "history-002640.pt",
+        "update": 2640,
+        "score": 0.587890625,
+        "sha256": "07bd963e8b63e03c4f6e8b3232c2c6e4e2ee8461e881d8451ad72c2c89c7ffd0",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-002520",
+        "file": "history-002520.pt",
+        "update": 2520,
+        "score": 0.587890625,
+        "sha256": "dd5ab96fd0762966ffcfdbbd510f5acb94dae23e29ec7b2b3748019fa84aba57",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-002360",
+        "file": "history-002360.pt",
+        "update": 2360,
+        "score": 0.587890625,
+        "sha256": "3e34e326560bf76b17482366e69f744a5059bef28818511aa8c9f6b27def8277",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-002160",
+        "file": "history-002160.pt",
+        "update": 2160,
+        "score": 0.587890625,
+        "sha256": "5c2e49098d07dcf1cf42b6fc5af72d9f2ced16caac64846f8beecdf72520e4d7",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-004040",
+        "file": "history-004040.pt",
+        "update": 4040,
+        "score": 0.5859375,
+        "sha256": "a1481d28e0fcaf976cfe27f9ab4b25a5bd9633e45a88db4c3f265d22fb3892e2",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-004000",
+        "file": "history-004000.pt",
+        "update": 4000,
+        "score": 0.5859375,
+        "sha256": "34ab22e0939104cbe6decb4683d012b9a37a7412a2234d5d62f4f8c80c08c645",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-003880",
+        "file": "history-003880.pt",
+        "update": 3880,
+        "score": 0.5859375,
+        "sha256": "d8d572535facf92186d0420f519bfd8ae95db20e08cc7e014aca3c80dc6fd744",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-003160",
+        "file": "history-003160.pt",
+        "update": 3160,
+        "score": 0.5859375,
+        "sha256": "56a2f6027a9791a783760e48a0641b11f8a4c1dc3c88fd434203621a4ae61bb8",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-002840",
+        "file": "history-002840.pt",
+        "update": 2840,
+        "score": 0.5859375,
+        "sha256": "8eb45d943743ffb13cde43a2a2ec4cf14edde574ea7c403f99fee05db6946ef5",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-001600",
+        "file": "history-001600.pt",
+        "update": 1600,
+        "score": 0.5859375,
+        "sha256": "badbc782bc5d29eae6661dab20deef9d91127ad605a0326e6fc504b90cb43e9e",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-004520",
+        "file": "history-004520.pt",
+        "update": 4520,
+        "score": 0.583984375,
+        "sha256": "39e4f14bf35e234d7f1de0fbb493a93dabcca6b4c8bf6be54ec33afbc51bc80f",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-004480",
+        "file": "history-004480.pt",
+        "update": 4480,
+        "score": 0.583984375,
+        "sha256": "2d018790f94e9cb53955650471fdd87a04d0b9585db74bac3a3601c91d3fa230",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-002320",
+        "file": "history-002320.pt",
+        "update": 2320,
+        "score": 0.583984375,
+        "sha256": "d57a5252499a93e6b202ec794835197069e594196979297140a32912748ce8ca",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-001920",
+        "file": "history-001920.pt",
+        "update": 1920,
+        "score": 0.583984375,
+        "sha256": "5c1313134cef44df652e09612f8e979908a8b69c8e60aa04429342aa508435d2",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-001760",
+        "file": "history-001760.pt",
+        "update": 1760,
+        "score": 0.583984375,
+        "sha256": "c3ce1660db02b0cee026703b86189e95b54eae9c0e955a97247634151cc74f71",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-004680",
+        "file": "history-004680.pt",
+        "update": 4680,
+        "score": 0.58203125,
+        "sha256": "b239ab1d0204d297d64f8ab5355fe8285709b4fbbd0f481c9bc819502cb2a4cc",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-003960",
+        "file": "history-003960.pt",
+        "update": 3960,
+        "score": 0.58203125,
+        "sha256": "1cca23e728954dc892f9e606010e28e158b44ac41565ae2fd8f2fbeadae978dc",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-003200",
+        "file": "history-003200.pt",
+        "update": 3200,
+        "score": 0.58203125,
+        "sha256": "88030aadf8d8334fc8ca32f0c682491c511ae5d9e96ec87abb31be1ed842dbb4",
+        "bytes": 2071081
+      },
+      {
+        "id": "history-002400",
+        "file": "history-002400.pt",
+        "update": 2400,
+        "score": 0.58203125,
+        "sha256": "fd1afb742f97a4986c5b5afe16a48cc4a53fcb512583b23c100edef64dd4fee3",
+        "bytes": 2071081
+      }
+    ]
+  }
+}

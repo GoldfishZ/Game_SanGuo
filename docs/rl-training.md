@@ -151,3 +151,33 @@ python tools/rl/promote_pve_models.py
 - 战斗继续使用 PPO checkpoint，三层规则都由服务端执行。
 
 当前 round_v3 数据的首次验证结果：Draft AUC 0.902、Formation AUC 0.877。该指标证明模型能从 held-out 后期对局区分相对价值，但不能替代固定 seed 的端到端胜率评估；后续还需与随机预战策略进行受控对局比较。
+
+## 9. 从仓库内训练种子继续训练
+
+仓库的 `assets/models/training/multi_roster_v1/` 包含：
+
+- update 4906 的可恢复 PPO checkpoint；
+- Adam 优化器状态；
+- 32 个 Self-play 历史策略及其评分；
+- 文件 schema 和 SHA-256 manifest。
+
+clone 后不要直接在 `assets/` 内续训。先验证并复制到被 Git 忽略的可写目录：
+
+```powershell
+python tools/rl/bootstrap_tracked_training.py --verify-only
+python tools/rl/bootstrap_tracked_training.py
+```
+
+脚本会拒绝覆盖内容不同的已有训练文件，并打印完整续训命令。默认目标为
+`artifacts/rl/multi_roster_v1_resume/`。应根据新机器硬件调整本地 YAML 中的
+`num_workers`、`rollout_steps` 和 `minibatch_size`；checkpoint 的模型、优化器和
+update 会从 4906 延续，历史池也会一起加载。
+
+维护者需要更新仓库训练种子时运行：
+
+```powershell
+python tools/rl/promote_training_seed.py
+```
+
+发布脚本会先校验 checkpoint schema、优化器和全部历史池文件，再原子复制并重写
+manifest。不要手工替换单个历史模型或只更新 `pool.json`。

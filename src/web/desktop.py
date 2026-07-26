@@ -22,7 +22,56 @@ def create_server(port: int = 0) -> ThreadingHTTPServer:
 
 
 def smoke_test() -> int:
-    """供构建脚本验证打包入口和静态/API资源是否可用。"""
+    """验证发行包的网页、PvP，以及三档 PvE 模型加载和推理。"""
+    from src.game_data.generals_config import get_general_by_name
+    from src.rl.env_v3 import SanguoEnv
+    from src.rl.opponents import HeuristicOpponent
+    from src.web.server import GameState
+
+    pvp = GameState()
+    pvp.reset("pvp")
+    if pvp.mode != "pvp" or pvp.phase != "select_p1":
+        raise RuntimeError("PvP 初始化失败")
+
+    concealed_state = GameState()
+    concealed_state.reset("pve")
+    ambush = get_general_by_name("张任")
+    concealed_state.controller.player2.add_general_to_team(ambush)
+    if not concealed_state.controller.player2.team.position_general(ambush, 1, 2):
+        raise RuntimeError("伏兵测试阵位初始化失败")
+    concealed = concealed_state.to_json()["p2"]["generals"][0]
+    if "id" in concealed or (concealed["row"], concealed["col"]) != (-1, -1):
+        raise RuntimeError("PvE 未显形伏兵泄露了身份或阵位")
+    ambush.get_passive_skill("伏兵").trigger_counter()
+    revealed = concealed_state.to_json()["p2"]["generals"][0]
+    if (
+        revealed.get("id") != ambush.general_id
+        or (revealed.get("row"), revealed.get("col")) != (1, 2)
+    ):
+        raise RuntimeError("PvE 伏兵显形后未恢复武将卡和阵位")
+
+    for difficulty in ("easy", "normal", "hard"):
+        pve = GameState()
+        pve.reset("pve", difficulty)
+        controller = pve.ensure_pve_controller().load()
+        if not controller.available or not controller.prebattle.available:
+            raise RuntimeError(
+                f"{difficulty} 档模型加载失败: {'; '.join(controller.load_errors)}"
+            )
+
+        draft = controller.choose_draft(
+            pve.pool_p2[:4], pve.controller.player1.selected_generals, pve.cost_limit,
+        )
+        formation = controller.choose_formation(draft, pve.controller.player1)
+        if not draft or len(formation) != len(draft):
+            raise RuntimeError(f"{difficulty} 档选将或布阵推理失败")
+
+        env = SanguoEnv(HeuristicOpponent())
+        observation, info = env.reset(2026072500)
+        action = controller.choose_battle_action(observation, info["action_mask"])
+        if action is None or info["action_mask"][action] != 0:
+            raise RuntimeError(f"{difficulty} 档战斗模型生成了非法动作")
+
     server = create_server()
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -38,7 +87,7 @@ def smoke_test() -> int:
             page = response.read().decode("utf-8")
         if state.get("phase") != "menu" or "三国武将卡牌游戏" not in page:
             raise RuntimeError("启动器返回了异常的游戏内容")
-        print("桌面启动器自检通过")
+        print("桌面启动器自检通过：PvP、三档 PvE 模型与伏兵隐藏均可用")
         return 0
     finally:
         server.shutdown()

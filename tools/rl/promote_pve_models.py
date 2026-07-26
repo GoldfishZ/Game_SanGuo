@@ -18,17 +18,31 @@ from src.rl import actions
 from src.rl.models.actor_critic_v3 import MODEL_SCHEMA
 from src.rl.observation import OBSERVATION_SCHEMA, OBSERVATION_SIZE
 from src.rl.prebattle import GENERAL_IDS, PREBATTLE_SCHEMA
+from src.rl.pve import BATTLE_MISTAKE_RATES, BATTLE_TEMPERATURES
 from src.rl.training.checkpoint import CheckpointManager
 
 
-DEFAULT_BATTLE = ROOT / "artifacts" / "rl" / "round_v3" / "checkpoints" / "ppo_latest.pt"
-DEFAULT_PREBATTLE = ROOT / "artifacts" / "rl" / "pve" / "prebattle_value.pt"
+DIFFICULTIES = ("easy", "normal", "hard")
+DEFAULT_SOURCES = {
+    difficulty: {
+        "battle": ROOT / "artifacts" / "rl" / "pve_tiers" / "frozen" / f"battle_{difficulty}.pt",
+        "prebattle": ROOT / "artifacts" / "rl" / "pve_tiers" / "prebattle" / f"prebattle_{difficulty}.pt",
+    }
+    for difficulty in DIFFICULTIES
+}
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--battle", type=Path, default=DEFAULT_BATTLE)
-    parser.add_argument("--prebattle", type=Path, default=DEFAULT_PREBATTLE)
+    for difficulty in DIFFICULTIES:
+        parser.add_argument(
+            f"--{difficulty}-battle", type=Path,
+            default=DEFAULT_SOURCES[difficulty]["battle"],
+        )
+        parser.add_argument(
+            f"--{difficulty}-prebattle", type=Path,
+            default=DEFAULT_SOURCES[difficulty]["prebattle"],
+        )
     parser.add_argument("--destination", type=Path, default=PVE_MODELS_DIR)
     return parser.parse_args()
 
@@ -75,37 +89,47 @@ def relative_or_absolute(path):
 
 def main():
     args = parse_args()
-    battle_path, prebattle_path = args.battle.resolve(), args.prebattle.resolve()
-    if not battle_path.is_file() or not prebattle_path.is_file():
-        raise FileNotFoundError("战斗模型或预战模型不存在，不能发布")
-    battle, prebattle = validate(battle_path, prebattle_path)
     destination = args.destination.resolve()
     destination.mkdir(parents=True, exist_ok=True)
-    battle_output = destination / "battle_policy.pt"
-    prebattle_output = destination / "prebattle_value.pt"
-    promote(battle_path, battle_output)
-    promote(prebattle_path, prebattle_output)
     manifest = {
-        "schema": "sanguo-pve-model-bundle-v1",
+        "schema": "sanguo-pve-model-bundle-v2",
         "promoted_at": datetime.now(timezone.utc).isoformat(),
-        "battle": {
-            "file": battle_output.name,
-            "source": relative_or_absolute(battle_path),
-            "sha256": sha256(battle_output),
-            "bytes": battle_output.stat().st_size,
-            "update": battle.get("update"),
-            "observation_schema": battle.get("observation_schema"),
-            "model_schema": battle.get("model_schema"),
-        },
-        "prebattle": {
-            "file": prebattle_output.name,
-            "source": relative_or_absolute(prebattle_path),
-            "sha256": sha256(prebattle_output),
-            "bytes": prebattle_output.stat().st_size,
-            "schema": prebattle.get("schema"),
-            "metadata": prebattle.get("metadata", {}),
-        },
+        "default_difficulty": "normal",
+        "difficulties": {},
     }
+    for difficulty in DIFFICULTIES:
+        battle_path = getattr(args, f"{difficulty}_battle").resolve()
+        prebattle_path = getattr(args, f"{difficulty}_prebattle").resolve()
+        if not battle_path.is_file() or not prebattle_path.is_file():
+            raise FileNotFoundError(f"{difficulty} 档战斗模型或预战模型不存在，不能发布")
+        battle, prebattle = validate(battle_path, prebattle_path)
+        battle_output = destination / f"battle_policy_{difficulty}.pt"
+        prebattle_output = destination / f"prebattle_value_{difficulty}.pt"
+        promote(battle_path, battle_output)
+        promote(prebattle_path, prebattle_output)
+        manifest["difficulties"][difficulty] = {
+            "runtime_policy": {
+                "temperature": BATTLE_TEMPERATURES[difficulty],
+                "legal_exploration_rate": BATTLE_MISTAKE_RATES[difficulty],
+            },
+            "battle": {
+                "file": battle_output.name,
+                "source": relative_or_absolute(battle_path),
+                "sha256": sha256(battle_output),
+                "bytes": battle_output.stat().st_size,
+                "update": battle.get("update"),
+                "observation_schema": battle.get("observation_schema"),
+                "model_schema": battle.get("model_schema"),
+            },
+            "prebattle": {
+                "file": prebattle_output.name,
+                "source": relative_or_absolute(prebattle_path),
+                "sha256": sha256(prebattle_output),
+                "bytes": prebattle_output.stat().st_size,
+                "schema": prebattle.get("schema"),
+                "metadata": prebattle.get("metadata", {}),
+            },
+        }
     (destination / "manifest.json").write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8",
     )

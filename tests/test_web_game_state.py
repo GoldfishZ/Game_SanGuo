@@ -529,8 +529,9 @@ class FakePVEController:
 
 
 def test_web_pve_skips_ai_draft_and_formation_screens():
-    state = post("/api/new", {"mode": "pve"})
+    state = post("/api/new", {"mode": "pve", "difficulty": "hard"})
     assert state["mode"] == "pve"
+    assert state["ai_difficulty"] == "hard"
     assert state["ai_team"] == "p2"
     main_web.STATE.pve_controller = FakePVEController()
 
@@ -585,17 +586,57 @@ def test_web_pve_conceals_enemy_ambush_identity_until_reveal():
     main_web.STATE.phase = "dice"
 
     concealed = main_web.STATE.to_json()["p2"]["generals"][0]
-    assert concealed["id"] == ambush.general_id
     assert concealed["name"] == "未知伏兵"
-    assert concealed["image"] == ""
-    assert concealed["attributes"] == []
-    assert concealed["skill"] == ""
-    assert concealed["_targetType"] == ""
-    assert concealed["skill_cost"] == 0
+    assert "id" not in concealed
+    assert concealed["row"] == -1
+    assert concealed["col"] == -1
     assert concealed["_ambushConcealed"] is True
 
     ambush.get_passive_skill("伏兵").trigger_counter()
     revealed = main_web.STATE.to_json()["p2"]["generals"][0]
+    assert revealed["id"] == ambush.general_id
+    assert revealed["row"] == 1
+    assert revealed["col"] == 2
     assert revealed["name"] == "张任"
     assert revealed["attributes"] == ["伏兵"]
     assert revealed["_ambushConcealed"] is False
+
+
+def test_web_pvp_does_not_hide_ambush_from_local_players():
+    post("/api/new", {"mode": "pvp"})
+    ambush = get_general_by_name("张任")
+    player2 = main_web.STATE.controller.player2
+    player2.add_general_to_team(ambush)
+    assert player2.team.position_general(ambush, 2, 3)
+
+    visible = main_web.STATE.to_json()["p2"]["generals"][0]
+    assert visible["id"] == ambush.general_id
+    assert visible["row"] == 2
+    assert visible["col"] == 3
+    assert visible["_ambushConcealed"] is False
+
+
+def test_web_pve_hidden_ambush_action_trace_does_not_leak_actor():
+    post("/api/new", {"mode": "pve"})
+    ambush = get_general_by_name("张任")
+    ai = main_web.STATE.controller.player2
+    ai.add_general_to_team(ambush)
+    assert ai.team.position_general(ambush, 1, 2)
+    trace = {
+        "kind": "attack",
+        "actor_id": ambush.general_id,
+        "actor_name": ambush.name,
+        "actor_position": {"row": 1, "col": 2},
+        "skill_id": "hidden-skill",
+        "skill_name": "隐藏技能",
+        "result": {"attacker_id": ambush.general_id, "target_id": 1},
+    }
+
+    public = main_web.STATE._conceal_hidden_ai_actor(trace)
+
+    assert public["actor_id"] is None
+    assert public["actor_name"] == "未知伏兵"
+    assert public["actor_position"] is None
+    assert public["skill_id"] == ""
+    assert "attacker_id" not in public["result"]
+    assert trace["actor_id"] == ambush.general_id

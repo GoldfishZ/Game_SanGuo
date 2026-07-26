@@ -6,6 +6,7 @@ __pycache__/
 /artifacts/
 /build/
 /dist/
+.venv-build-windows/
 *.spec
 
 # Claude Code：共享配置提交，本地权限和临时工作目录不提交。

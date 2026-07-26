@@ -8,8 +8,21 @@ from src.paths import PVE_MODELS_DIR
 from src.rl.prebattle import PrebattlePolicy, snapshot_formation
 
 
-DEFAULT_BATTLE_MODEL = PVE_MODELS_DIR / "battle_policy.pt"
-DEFAULT_PREBATTLE_MODEL = PVE_MODELS_DIR / "prebattle_value.pt"
+PVE_DIFFICULTIES = ("easy", "normal", "hard")
+DEFAULT_DIFFICULTY = "normal"
+DEFAULT_BATTLE_MODELS = {
+    difficulty: PVE_MODELS_DIR / f"battle_policy_{difficulty}.pt"
+    for difficulty in PVE_DIFFICULTIES
+}
+DEFAULT_PREBATTLE_MODELS = {
+    difficulty: PVE_MODELS_DIR / f"prebattle_value_{difficulty}.pt"
+    for difficulty in PVE_DIFFICULTIES
+}
+BATTLE_TEMPERATURES = {"easy": 1.35, "normal": None, "hard": None}
+BATTLE_MISTAKE_RATES = {"easy": 0.0, "normal": 0.30, "hard": 0.0}
+# Backward-compatible aliases for callers that expect one default bundle.
+DEFAULT_BATTLE_MODEL = DEFAULT_BATTLE_MODELS[DEFAULT_DIFFICULTY]
+DEFAULT_PREBATTLE_MODEL = DEFAULT_PREBATTLE_MODELS[DEFAULT_DIFFICULTY]
 
 
 class _BattleView:
@@ -47,13 +60,32 @@ class _BattleView:
 class PVEController:
     """Lazily loaded AI components; failures degrade to safe baselines."""
 
-    def __init__(self, battle_checkpoint=None, prebattle_checkpoint=None, *, device="cpu"):
+    def __init__(self, battle_checkpoint=None, prebattle_checkpoint=None, *,
+                 difficulty=DEFAULT_DIFFICULTY, device="cpu", battle_temperature=None,
+                 mistake_rate=None):
+        if difficulty not in PVE_DIFFICULTIES:
+            raise ValueError(f"未知 PvE 难度: {difficulty}")
+        self.difficulty = difficulty
         self.device = device
+        self.battle_temperature = (
+            BATTLE_TEMPERATURES[difficulty]
+            if battle_temperature is None
+            else battle_temperature
+        )
+        self.mistake_rate = (
+            BATTLE_MISTAKE_RATES[difficulty] if mistake_rate is None else mistake_rate
+        )
         self.battle_checkpoint = Path(
-            battle_checkpoint or os.environ.get("SANGUO_PVE_BATTLE_MODEL", DEFAULT_BATTLE_MODEL)
+            battle_checkpoint or os.environ.get(
+                f"SANGUO_PVE_BATTLE_MODEL_{difficulty.upper()}",
+                DEFAULT_BATTLE_MODELS[difficulty],
+            )
         )
         self.prebattle_checkpoint = Path(
-            prebattle_checkpoint or os.environ.get("SANGUO_PVE_PREBATTLE_MODEL", DEFAULT_PREBATTLE_MODEL)
+            prebattle_checkpoint or os.environ.get(
+                f"SANGUO_PVE_PREBATTLE_MODEL_{difficulty.upper()}",
+                DEFAULT_PREBATTLE_MODELS[difficulty],
+            )
         )
         self.battle_model = None
         self.prebattle = PrebattlePolicy(device=device)
@@ -103,24 +135,40 @@ class PVEController:
             generals, enemy_player.selected_generals, snapshot_formation(enemy_player.team),
         )
 
-    def _choose_battle_action(self, view):
+    def choose_battle_action(self, observation, action_mask):
+        """Select an action with the same difficulty behavior used by Web PvE."""
+        self.load()
         if self.battle_model is None:
+            return None
+        import torch
+        with torch.no_grad():
+            observation = torch.as_tensor(
+                observation, dtype=torch.float32, device=self.device,
+            ).unsqueeze(0)
+            mask = torch.as_tensor(
+                action_mask, dtype=torch.bool, device=self.device,
+            ).unsqueeze(0)
+            logits, _ = self.battle_model(observation, mask)
+            if self.mistake_rate and torch.rand((), device=self.device) < self.mistake_rate:
+                legal = torch.nonzero(~mask[0], as_tuple=False).flatten()
+                choice = torch.randint(len(legal), (), device=self.device)
+                return int(legal[choice].item())
+            if self.battle_temperature is not None:
+                # 较低难度保留探索性失误；合法动作仍由 action mask 保证。
+                probabilities = torch.softmax(logits / self.battle_temperature, dim=-1)
+                return int(torch.multinomial(probabilities, 1).item())
+            return int(logits.argmax(dim=-1).item())
+
+    def _choose_battle_action(self, view):
+        action_id = self.choose_battle_action(view.observation(), view.action_mask())
+        if action_id is None:
             legal = view.legal_actions()
             attacks = [item for item in legal if view.decode_action(item).kind == "attack"]
             if attacks:
                 return min(attacks, key=view.attack_target_hp)
             skills = [item for item in legal if view.decode_action(item).kind.startswith("skill")]
             return (skills or legal)[0]
-        import torch
-        with torch.no_grad():
-            observation = torch.as_tensor(
-                view.observation(), dtype=torch.float32, device=self.device,
-            ).unsqueeze(0)
-            mask = torch.as_tensor(
-                view.action_mask(), dtype=torch.bool, device=self.device,
-            ).unsqueeze(0)
-            logits, _ = self.battle_model(observation, mask)
-            return int(logits.argmax(dim=-1).item())
+        return action_id
 
     @staticmethod
     def _apply_action(state, view, action):

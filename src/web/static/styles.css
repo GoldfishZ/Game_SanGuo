@@ -36,6 +36,7 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
 .mode-card{appearance:none;text-align:left;padding:16px 18px;background:linear-gradient(145deg,rgba(45,32,19,.96),rgba(18,13,9,.96));border:1px solid #5d4930;border-radius:8px;color:var(--text);cursor:pointer;box-shadow:0 12px 28px rgba(0,0,0,.28);transition:transform .18s,border-color .18s,background .18s}
 .mode-card:hover{transform:translateY(-2px);border-color:var(--gold);background:linear-gradient(145deg,rgba(62,42,23,.98),rgba(24,17,10,.98))}
 .mode-card strong,.mode-card small,.mode-card span{display:block}.mode-card strong{margin:5px 0 7px;color:var(--gold-bright);font:800 clamp(16px,2vw,21px)/1.2 "KaiTi",serif;letter-spacing:.08em}.mode-card small{color:#a99a7d;font-size:11px;line-height:1.55}.mode-kicker{color:#846f4d;font-size:9px;letter-spacing:.2em}.mode-card.pve{border-color:#8c6c37}.mode-card.pve::after{content:"AI";float:right;margin-top:-50px;color:rgba(217,182,105,.18);font:900 30px/1 Georgia,serif}
+.difficulty-card{cursor:default}.difficulty-actions{position:relative;z-index:1;display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:12px}.difficulty-btn{border:1px solid #65502e;border-radius:6px;padding:7px 5px;background:rgba(20,15,10,.75);color:#cab887;cursor:pointer;transition:.18s ease}.difficulty-btn:hover{transform:translateY(-1px);border-color:var(--gold);background:rgba(105,77,34,.28)}.difficulty-btn b,.difficulty-btn span{display:block}.difficulty-btn b{font:700 13px/1.2 "KaiTi",serif}.difficulty-btn span{margin-top:3px;color:#81745e;font-size:8px}.difficulty-btn.easy b{color:#8fc486}.difficulty-btn.normal b{color:#d6b76f}.difficulty-btn.hard b{color:#dc776b}
 @media(max-width:600px){.game-mode-picker{grid-template-columns:1fr}.mode-card{padding:13px 15px}}
 
 /* Faction quick-intro bar */
@@ -797,13 +798,9 @@ h1{font-size:clamp(24px,5vw,38px);color:var(--gold);letter-spacing:.14em;
 }
 
 
-/* PvE enemy ambushes are identity-safe silhouettes until the server reveals them. */
-.bcell.ambush-concealed{opacity:1;filter:none;background:radial-gradient(circle at 50% 38%,#314746 0,#182827 42%,#090f10 100%);border:1px dashed rgba(164,194,185,.52);overflow:hidden;box-shadow:inset 0 0 24px rgba(0,0,0,.85),0 5px 16px rgba(0,0,0,.34)}
-.bcell.ambush-concealed .cname{color:#c2d3ce;text-shadow:0 2px 5px #000}.bcell.ambush-concealed .chp{color:#819792}.ambush-seal{position:absolute;z-index:5;inset:18% 22% 32%;display:grid;place-items:center;border:1px solid rgba(180,207,198,.5);border-radius:50%;color:#d1e0db;font:900 clamp(19px,3vw,36px)/1 "KaiTi",serif;text-shadow:0 3px 8px #000;box-shadow:0 0 20px rgba(118,164,153,.22)}
-.ambush-fog,.ambush-fog i{position:absolute;inset:-20%;border-radius:50%;background:radial-gradient(ellipse,rgba(115,151,142,.24),rgba(15,27,27,0) 66%);animation:ambushFogDrift 4.2s ease-in-out infinite alternate}.ambush-fog i:nth-child(1){transform:translate(-18%,12%) scale(.7);animation-delay:-1.3s}.ambush-fog i:nth-child(2){transform:translate(22%,-8%) scale(.82);animation-delay:-2.6s}.ambush-fog i:nth-child(3){transform:translate(8%,22%) scale(.62);animation-delay:-3.4s}
+/* PvE enemy ambushes do not occupy a client-visible cell until reveal. */
 .bcell.ambush-revealing{z-index:42;animation:ambushIdentityReveal .72s cubic-bezier(.2,.85,.3,1);box-shadow:0 0 28px rgba(177,214,202,.75)}
 .bcell.ambush-counter-hit{animation:ambushCounterHit .48s ease-out}
 
-@keyframes ambushFogDrift{from{transform:translate3d(-6%,-2%,0) scale(.9);opacity:.52}to{transform:translate3d(8%,5%,0) scale(1.12);opacity:.92}}
 @keyframes ambushIdentityReveal{0%{filter:brightness(.12) blur(4px);transform:scale(.8) rotate(-2deg)}45%{filter:brightness(1.8) blur(0);transform:scale(1.1) rotate(1deg)}100%{filter:none;transform:scale(1)}}
 @keyframes ambushCounterHit{0%{transform:translateX(0);filter:brightness(1)}30%{transform:translateX(-7px);filter:brightness(2)}60%{transform:translateX(5px);filter:brightness(.65)}100%{transform:translateX(0);filter:brightness(1)}}

@@ -69,8 +69,15 @@ def ppo_update(model, optimizer, batch, *, clip_ratio=0.2, value_coef=0.5,
             early_stop = True
             break
 
+    # v3 的结构化动作头会为每条 observation 展开全部 722 个动作。
+    # 即使这里只需要 value，一次前向整个 rollout 仍会构造巨大的 actor
+    # 中间张量；按训练 minibatch 分块可保持 explained variance 的结果不变。
     with torch.no_grad():
-        _, all_values = model(observations, masks)
+        all_values = torch.cat([
+            model(observations[start:start + minibatch_size],
+                  masks[start:start + minibatch_size])[1]
+            for start in range(0, len(observations), minibatch_size)
+        ])
         variance = torch.var(returns)
         explained = 1.0 - torch.var(returns - all_values) / (variance + 1e-8)
     metrics = {key: value / max(1, batches) for key, value in accumulated.items()}
